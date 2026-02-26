@@ -309,7 +309,7 @@ class TelegramBot:
         # Start background version checker (skip for dev/source installs)
         from ductor_bot.infra.install import is_upgradeable
 
-        if is_upgradeable():
+        if is_upgradeable() and self._config.update_check:
             self._update_observer = UpdateObserver(notify=self._on_update_available)
             self._update_observer.start()
 
