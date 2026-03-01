@@ -13,12 +13,14 @@ Environment variables DUCTOR_AGENT_NAME, DUCTOR_INTERAGENT_PORT, and
 DUCTOR_INTERAGENT_HOST are automatically set by the Ductor framework.
 
 Usage:
-    python3 ask_agent_async.py [--new] TARGET_AGENT "Your message here"
+    python3 ask_agent_async.py [--new] [--summary "Short description"] TARGET_AGENT "Your message here"
 
 Options:
-    --new   Start a fresh session, discarding any prior inter-agent context
-            with the recipient. Without this flag, the recipient resumes
-            the existing session (if any).
+    --new                Start a fresh session, discarding any prior inter-agent context
+                         with the recipient. Without this flag, the recipient resumes
+                         the existing session (if any).
+    --summary "text"     Short description shown in the recipient's Telegram chat
+                         notification instead of a truncated message excerpt.
 """
 
 from __future__ import annotations
@@ -33,12 +35,27 @@ import urllib.request
 def main() -> None:
     args = sys.argv[1:]
     new_session = False
-    if args and args[0] == "--new":
-        new_session = True
-        args = args[1:]
+    summary = ""
+
+    # Parse flags
+    while args:
+        if args[0] == "--new":
+            new_session = True
+            args = args[1:]
+        elif args[0] == "--summary":
+            if len(args) < 2:
+                print("Error: --summary requires a value", file=sys.stderr)
+                sys.exit(1)
+            summary = args[1]
+            args = args[2:]
+        else:
+            break
 
     if len(args) < 2:
-        print('Usage: python3 ask_agent_async.py [--new] TARGET_AGENT "message"', file=sys.stderr)
+        print(
+            'Usage: python3 ask_agent_async.py [--new] [--summary "desc"] TARGET_AGENT "message"',
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     target = args[0]
@@ -51,6 +68,8 @@ def main() -> None:
     body: dict[str, object] = {"from": sender, "to": target, "message": message}
     if new_session:
         body["new_session"] = True
+    if summary:
+        body["summary"] = summary
     payload = json.dumps(body).encode()
 
     req = urllib.request.Request(
