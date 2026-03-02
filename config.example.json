@@ -10,7 +10,7 @@
     "max_turns": null,
     "max_session_messages": null,
     "permission_mode": "bypassPermissions",
-    "cli_timeout": 600.0,
+    "cli_timeout": 1800.0,
     "reasoning_effort": "medium",
     "file_access": "all",
     "gemini_api_key": "null",

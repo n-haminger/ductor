@@ -226,7 +226,7 @@ class AgentConfig(BaseModel):
     max_turns: int | None = None
     max_session_messages: int | None = None
     permission_mode: str = "bypassPermissions"
-    cli_timeout: float = 600.0
+    cli_timeout: float = 1800.0
     reasoning_effort: str = "medium"
     file_access: str = "all"
     gemini_api_key: str | None = None
