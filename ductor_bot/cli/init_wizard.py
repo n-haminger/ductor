@@ -35,6 +35,7 @@ def _load_banner() -> str:
 
 
 _TOKEN_PATTERN = re.compile(r"^\d{8,}:[A-Za-z0-9_-]{30,}$")
+_MATRIX_USER_RE = re.compile(r"^@[a-z0-9._=/+-]+:[a-z0-9.-]+$", re.IGNORECASE)
 
 _TIMEZONES: list[str] = [
     # Europe
@@ -165,6 +166,38 @@ def _show_disclaimer(console: Console) -> None:
         _abort()
 
 
+# ---------------------------------------------------------------------------
+# Transport selection
+# ---------------------------------------------------------------------------
+
+
+def _ask_transport(console: Console) -> str:
+    """Prompt for the messaging transport (Telegram or Matrix)."""
+    console.print(
+        Panel(
+            "[bold]Choose how users will talk to the bot:[/bold]\n\n"
+            "  [bold cyan]Telegram[/bold cyan]  — Requires a bot token from @BotFather\n"
+            "  [bold cyan]Matrix[/bold cyan]    — Requires a Matrix account on a homeserver (e.g. Element)",
+            title="[bold]Messaging Transport[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        ),
+    )
+
+    selected: str | None = questionary.select(
+        "Select transport:",
+        choices=["Telegram", "Matrix"],
+    ).ask()
+    if selected is None:
+        _abort()
+    return "matrix" if selected == "Matrix" else "telegram"
+
+
+# ---------------------------------------------------------------------------
+# Telegram setup
+# ---------------------------------------------------------------------------
+
+
 def _ask_telegram_token(console: Console) -> str:
     """Prompt for the Telegram bot token with instructions."""
     instructions = (
@@ -225,6 +258,109 @@ def _ask_user_id(console: Console) -> list[int]:
             console.print("[red]User ID must be a positive number.[/red]")
             continue
         return [uid]
+
+
+# ---------------------------------------------------------------------------
+# Matrix setup
+# ---------------------------------------------------------------------------
+
+
+def _ask_matrix_homeserver(console: Console) -> str:
+    """Prompt for the Matrix homeserver URL."""
+    console.print(
+        Panel(
+            "[bold]Enter your Matrix homeserver URL.[/bold]\n\n"
+            "  This is the server where your bot account lives.\n\n"
+            "[dim]Example: https://matrix.example.com[/dim]",
+            title="[bold]Matrix Homeserver[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        ),
+    )
+
+    while True:
+        url: str | None = questionary.text("Homeserver URL:").ask()
+        if url is None:
+            _abort()
+        url = url.strip().rstrip("/")
+        if url.startswith("https://") and len(url) > len("https://"):
+            return url
+        console.print("[red]Must be an HTTPS URL (e.g. https://matrix.example.com)[/red]")
+
+
+def _ask_matrix_user_id(console: Console) -> str:
+    """Prompt for the Matrix bot user ID."""
+    console.print(
+        Panel(
+            "[bold]Enter the bot's Matrix user ID.[/bold]\n\n"
+            "  Create a dedicated account for the bot on your homeserver.\n\n"
+            "[dim]Format: @botname:homeserver.domain[/dim]",
+            title="[bold]Matrix Bot User ID[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        ),
+    )
+
+    while True:
+        uid: str | None = questionary.text("Bot user ID:").ask()
+        if uid is None:
+            _abort()
+        uid = uid.strip()
+        if _MATRIX_USER_RE.match(uid):
+            return uid
+        console.print("[red]Invalid format. Expected: @localpart:domain (e.g. @mybot:matrix.org)[/red]")
+
+
+def _ask_matrix_password(console: Console) -> str:
+    """Prompt for the Matrix account password."""
+    console.print(
+        Panel(
+            "[bold]Enter the bot account's password.[/bold]\n\n"
+            "  Used for the initial login only. After first login, an access\n"
+            "  token is saved and the password is no longer needed.",
+            title="[bold]Matrix Password[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        ),
+    )
+
+    while True:
+        pw: str | None = questionary.password("Password:").ask()
+        if pw is None:
+            _abort()
+        pw = pw.strip()
+        if pw:
+            return pw
+        console.print("[red]Password cannot be empty.[/red]")
+
+
+def _ask_matrix_allowed_users(console: Console) -> list[str]:
+    """Prompt for allowed Matrix user IDs."""
+    console.print(
+        Panel(
+            "[bold]Who should be allowed to talk to this bot?[/bold]\n\n"
+            "  Enter your Matrix user ID. Only messages from allowed users\n"
+            "  will be processed.\n\n"
+            "[dim]Format: @username:homeserver.domain[/dim]",
+            title="[bold]Allowed Users[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        ),
+    )
+
+    while True:
+        raw: str | None = questionary.text("Your Matrix user ID:").ask()
+        if raw is None:
+            _abort()
+        raw = raw.strip()
+        if _MATRIX_USER_RE.match(raw):
+            return [raw]
+        console.print("[red]Invalid format. Expected: @user:domain (e.g. @nik:matrix.org)[/red]")
+
+
+# ---------------------------------------------------------------------------
+# Common steps
+# ---------------------------------------------------------------------------
 
 
 def _ask_docker(console: Console) -> bool:
@@ -340,12 +476,24 @@ def _offer_service_install(console: Console) -> bool:
     return bool(enabled)
 
 
+# ---------------------------------------------------------------------------
+# Config writing
+# ---------------------------------------------------------------------------
+
+
 def _write_config(
     *,
-    telegram_token: str,
-    allowed_user_ids: list[int],
+    transport: str,
     user_timezone: str,
     docker_enabled: bool,
+    # Telegram
+    telegram_token: str = "",
+    allowed_user_ids: list[int] | None = None,
+    # Matrix
+    matrix_homeserver: str = "",
+    matrix_user_id: str = "",
+    matrix_password: str = "",
+    matrix_allowed_users: list[str] | None = None,
 ) -> Path:
     """Write the config file with wizard values merged into defaults."""
     paths = resolve_paths()
@@ -367,8 +515,7 @@ def _write_config(
     if merged.get("gemini_api_key") is None:
         merged["gemini_api_key"] = DEFAULT_EMPTY_GEMINI_API_KEY
 
-    merged["telegram_token"] = telegram_token
-    merged["allowed_user_ids"] = allowed_user_ids
+    merged["transport"] = transport
     merged["user_timezone"] = user_timezone
     docker_section = merged.get("docker")
     if isinstance(docker_section, dict):
@@ -376,12 +523,31 @@ def _write_config(
     else:
         merged["docker"] = {"enabled": docker_enabled}
 
+    if transport == "telegram":
+        merged["telegram_token"] = telegram_token
+        merged["allowed_user_ids"] = allowed_user_ids or []
+    else:  # matrix
+        matrix_section = merged.get("matrix")
+        if not isinstance(matrix_section, dict):
+            matrix_section = {}
+            merged["matrix"] = matrix_section
+        matrix_section["homeserver"] = matrix_homeserver
+        matrix_section["user_id"] = matrix_user_id
+        matrix_section["password"] = matrix_password
+        matrix_section["allowed_users"] = matrix_allowed_users or []
+        matrix_section["store_path"] = "matrix_store"
+
     from ductor_bot.infra.json_store import atomic_json_save
 
     atomic_json_save(config_path, merged)
 
     init_workspace(paths)
     return config_path
+
+
+# ---------------------------------------------------------------------------
+# Onboarding flow
+# ---------------------------------------------------------------------------
 
 
 def run_onboarding() -> bool:
@@ -396,11 +562,31 @@ def run_onboarding() -> bool:
     _show_disclaimer(console)
     console.print()
 
-    token = _ask_telegram_token(console)
+    transport = _ask_transport(console)
     console.print()
 
-    user_ids = _ask_user_id(console)
-    console.print()
+    # Transport-specific credentials
+    telegram_token = ""
+    allowed_user_ids: list[int] = []
+    matrix_homeserver = ""
+    matrix_user_id = ""
+    matrix_password = ""
+    matrix_allowed_users: list[str] = []
+
+    if transport == "telegram":
+        telegram_token = _ask_telegram_token(console)
+        console.print()
+        allowed_user_ids = _ask_user_id(console)
+        console.print()
+    else:  # matrix
+        matrix_homeserver = _ask_matrix_homeserver(console)
+        console.print()
+        matrix_user_id = _ask_matrix_user_id(console)
+        console.print()
+        matrix_password = _ask_matrix_password(console)
+        console.print()
+        matrix_allowed_users = _ask_matrix_allowed_users(console)
+        console.print()
 
     docker_enabled = _ask_docker(console)
     console.print()
@@ -409,10 +595,15 @@ def run_onboarding() -> bool:
     console.print()
 
     config_path = _write_config(
-        telegram_token=token,
-        allowed_user_ids=user_ids,
+        transport=transport,
         user_timezone=timezone,
         docker_enabled=docker_enabled,
+        telegram_token=telegram_token,
+        allowed_user_ids=allowed_user_ids,
+        matrix_homeserver=matrix_homeserver,
+        matrix_user_id=matrix_user_id,
+        matrix_password=matrix_password,
+        matrix_allowed_users=matrix_allowed_users,
     )
 
     paths = resolve_paths()

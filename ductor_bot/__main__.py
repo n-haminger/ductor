@@ -212,18 +212,19 @@ def _validate_telegram_config(config: AgentConfig) -> None:
 def _validate_matrix_config(config: AgentConfig) -> None:
     """Validate Matrix transport requirements."""
     m = config.matrix
+    hint = " Run [bold]ductor onboarding[/bold] to reconfigure."
     if not m.homeserver:
-        _console.print("[bold yellow]Matrix homeserver URL is required.[/bold yellow]")
+        _console.print(f"[bold yellow]Matrix homeserver URL is required.{hint}[/bold yellow]")
         sys.exit(1)
     if not m.user_id:
-        _console.print("[bold yellow]Matrix user_id is required.[/bold yellow]")
+        _console.print(f"[bold yellow]Matrix user_id is required.{hint}[/bold yellow]")
         sys.exit(1)
     if not m.password and not m.access_token:
-        _console.print("[bold yellow]Matrix password or access_token is required.[/bold yellow]")
+        _console.print(f"[bold yellow]Matrix password or access_token is required.{hint}[/bold yellow]")
         sys.exit(1)
     if not m.allowed_rooms and not m.allowed_users:
         _console.print(
-            "[bold yellow]At least one allowed_room or allowed_user is required.[/bold yellow]"
+            f"[bold yellow]At least one allowed_room or allowed_user is required.{hint}[/bold yellow]"
         )
         sys.exit(1)
 
