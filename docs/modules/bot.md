@@ -2,6 +2,8 @@
 
 Telegram interface layer (`aiogram`): handlers, middleware, callback routing, streaming UX, startup lifecycle.
 
+For the Matrix transport equivalent, see [matrix.md](matrix.md).
+
 ## Files
 
 - `bot/app.py`: `TelegramBot` class, handler registration, callback routing, group management commands

@@ -435,12 +435,7 @@ class MatrixBot:
     async def _run_streaming(
         self, key: SessionKey, text: str, room_id: str, event: object
     ) -> None:
-        """Run with streaming — each reasoning segment as a separate message.
-
-        Tool activity markers (``[TOOL: ...]``) are suppressed.  Instead,
-        the text produced between tool calls is flushed as its own message
-        so the user sees the reasoning unfold without noise.
-        """
+        """Run with streaming — each reasoning segment as a separate message."""
         orch = self._orchestrator
         if orch is None:
             return
@@ -452,19 +447,41 @@ class MatrixBot:
         async def _on_delta(delta: str) -> None:
             buffer[0] += delta
 
-        async def _on_tool(tool_name: str) -> None:
-            # Flush the current reasoning segment as a new message.
-            segment_count[0] += 1
+        async def _flush_and_tag(tag: str) -> None:
+            """Flush buffer, send a status tag, and re-set typing indicator."""
             seg_text = buffer[0].strip()
+            if seg_text:
+                await self._send_rich(room_id, buffer[0])
+            buffer[0] = ""
+            await self._send_rich(room_id, tag)
+            # Re-set typing indicator (sending messages clears it in Matrix)
+            with contextlib.suppress(Exception):
+                await self._client.room_typing(
+                    room_id, typing_state=True, timeout=30000
+                )
+
+        async def _on_tool(tool_name: str) -> None:
+            segment_count[0] += 1
             logger.info(
                 "Matrix streaming: tool=%s segment=%d buf_len=%d",
                 tool_name,
                 segment_count[0],
-                len(seg_text),
+                len(buffer[0].strip()),
             )
-            if seg_text:
-                await self._send_rich(room_id, buffer[0])
-            buffer[0] = ""
+            await _flush_and_tag(f"**[TOOL: {tool_name}]**")
+
+        async def _on_system(status: str | None) -> None:
+            system_map: dict[str, str] = {
+                "thinking": "THINKING",
+                "compacting": "COMPACTING",
+                "recovering": "Please wait, recovering...",
+                "timeout_warning": "TIMEOUT APPROACHING",
+                "timeout_extended": "TIMEOUT EXTENDED",
+            }
+            label = system_map.get(status or "")
+            if label is None:
+                return
+            await _flush_and_tag(f"*[{label}]*")
 
         async with MatrixTypingContext(self._client, room_id):
             result = await orch.handle_message_streaming(
@@ -472,6 +489,7 @@ class MatrixBot:
                 text,
                 on_text_delta=_on_delta,
                 on_tool_activity=_on_tool,
+                on_system_status=_on_system,
             )
 
         # Send the final segment (with button extraction).
