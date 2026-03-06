@@ -13,7 +13,7 @@ Alternative to the Telegram transport — selected via `config.transport = "matr
 - `matrix/id_map.py`: bidirectional `room_id` ↔ `int` mapping (deterministic SHA256)
 - `matrix/buttons.py`: reaction-based button replacement; emoji digits + numbered text fallback
 - `matrix/formatting.py`: Markdown → Matrix HTML conversion
-- `matrix/typing.py`: typing indicator context manager
+- `matrix/typing.py`: typing indicator context manager with periodic keep-alive (5s interval)
 - `matrix/streaming.py`: `MatrixStreamEditor` for `m.replace`-based streaming (unused; kept for reference)
 - `matrix/startup.py`: Matrix-specific startup (orchestrator, observers, restart sentinel)
 
@@ -26,7 +26,14 @@ Matrix uses **segment-based streaming**: text is buffered and flushed as separat
 - `_on_system()`: flushes buffer, sends `*[STATUS]*` tag (THINKING, COMPACTING, etc.), re-sets typing indicator
 - Final segment gets button extraction via `ButtonTracker`
 
-Typing indicator is re-set after each sent message because Matrix clears it on `room_send`.
+### Typing indicator
+
+`MatrixTypingContext` runs a background keep-alive task that re-sends the typing notification every 5 seconds. This is necessary because:
+
+1. Matrix clients (Element) clear the indicator when the bot sends a message
+2. The server expires it after 30 seconds
+
+The keep-alive ensures the indicator stays visible throughout the entire response, even when intermediate messages (reasoning segments, tool tags) are sent.
 
 ## Buttons
 
@@ -51,6 +58,14 @@ Same command set as Telegram, with `!` or `/` prefix:
 - Transport-level: `!stop`, `!stop_all`, `!restart`, `!new`, `!help`, `!info`, `!session`, `!showfiles`, `!agent_commands`
 - Orchestrator-routed: `!status`, `!model`, `!memory`, `!cron`, `!sessions`, `!tasks`, `!agents`
 
+## Setup
+
+Matrix can be configured via the interactive setup wizard (`ductor onboarding`) or manually in `config.json`.
+
+The wizard prompts for: homeserver URL, bot user ID, password, and allowed users. See [setup_wizard.md](setup_wizard.md).
+
+Sub-agents can be created via `create_agent.py --transport matrix` (see agent tools RULES.md).
+
 ## Configuration
 
 ```toml
@@ -73,4 +88,8 @@ matrix = ["matrix-nio>=0.25.0"]
 }
 ```
 
-Credentials are persisted in `matrix_store/credentials.json` (mode 0o600) after first login.
+### Credential flow
+
+1. On first start, the bot logs in with the `password` and saves an `access_token` to `matrix_store/credentials.json` (mode 0o600)
+2. On subsequent starts, the saved token is restored — password is no longer needed
+3. If `access_token` is set in config (instead of password), it is used directly

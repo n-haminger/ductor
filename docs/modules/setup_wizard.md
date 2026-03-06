@@ -4,7 +4,7 @@ Covers `ductor` command behavior, onboarding flow, and lifecycle commands.
 
 ## Files
 
-- `ductor_bot/__main__.py`: CLI dispatch + config helpers + `run_telegram`
+- `ductor_bot/__main__.py`: CLI dispatch + config helpers + `run_bot`
 - `ductor_bot/cli_commands/lifecycle.py`: start/stop/restart/upgrade/uninstall logic
 - `ductor_bot/cli_commands/status.py`: `ductor status` + `ductor help`
 - `ductor_bot/cli_commands/service.py`: service command routing
@@ -30,10 +30,10 @@ Covers `ductor` command behavior, onboarding flow, and lifecycle commands.
 
 ## Configuration gate
 
-`_is_configured()` currently requires:
+`_is_configured()` checks based on `transport` field:
 
-- valid non-placeholder `telegram_token`
-- non-empty `allowed_user_ids`
+- **Telegram** (default): valid non-placeholder `telegram_token` + non-empty `allowed_user_ids`
+- **Matrix**: non-empty `homeserver` + non-empty `user_id`
 
 `allowed_group_ids` controls group authorization but does not satisfy startup configuration alone.
 
@@ -42,8 +42,10 @@ Covers `ductor` command behavior, onboarding flow, and lifecycle commands.
 1. banner
 2. provider install/auth check
 3. disclaimer
-4. Telegram bot token prompt
-5. Telegram user ID prompt
+4. **transport selection** (Telegram or Matrix)
+5. transport-specific credentials:
+   - Telegram: bot token prompt + user ID prompt
+   - Matrix: homeserver URL + bot user ID + password + allowed users
 6. Docker choice
 7. timezone choice
 8. write merged config + initialize workspace
