@@ -156,7 +156,15 @@ class MatrixBot:
 
     async def run(self) -> int:
         """Login, sync, run event loop."""
-        from nio import InviteMemberEvent, ReactionEvent, RoomMessageText
+        from nio import (
+            InviteMemberEvent,
+            ReactionEvent,
+            RoomMessageAudio,
+            RoomMessageFile,
+            RoomMessageImage,
+            RoomMessageText,
+            RoomMessageVideo,
+        )
 
         await login_or_restore(self._client, self._config.matrix, self._store_path)
 
@@ -165,6 +173,10 @@ class MatrixBot:
 
         # Register event callbacks
         self._client.add_event_callback(self._on_message, RoomMessageText)
+        self._client.add_event_callback(self._on_media, RoomMessageImage)
+        self._client.add_event_callback(self._on_media, RoomMessageAudio)
+        self._client.add_event_callback(self._on_media, RoomMessageVideo)
+        self._client.add_event_callback(self._on_media, RoomMessageFile)
         self._client.add_event_callback(self._on_reaction, ReactionEvent)
         self._client.add_event_callback(self._on_invite, InviteMemberEvent)
 
@@ -260,6 +272,52 @@ class MatrixBot:
         key = SessionKey(chat_id=chat_id, topic_id=None)
 
         # Dispatch
+        if self._config.streaming.enabled:
+            await self._run_streaming(key, text, room_id, event)
+        else:
+            await self._run_non_streaming(key, text, room_id, event)
+
+    async def _on_media(self, room: object, event: object) -> None:
+        """Handle incoming media messages (images, audio, video, files)."""
+        from nio import MatrixRoom, RoomMessageMedia
+
+        if not isinstance(room, MatrixRoom):
+            return
+        if not isinstance(event, RoomMessageMedia):
+            return
+
+        if event.sender == self._client.user_id:
+            return  # Ignore own messages
+
+        if room.room_id in self._leaving_rooms:
+            return
+
+        if not self._is_authorized(room, event):
+            return
+
+        # Group mention-only filter: in group rooms, only process if addressed
+        is_group_room = not self._is_dm_room(room)
+        if is_group_room and self._config.group_mention_only:
+            if not self._is_message_addressed(event):
+                return
+
+        room_id = room.room_id
+        self._last_active_room = room_id
+        chat_id = self._id_map.room_to_int(room_id)
+
+        # Download and build prompt
+        from ductor_bot.matrix.media import resolve_matrix_media
+
+        paths = self._orch.paths
+        text = await resolve_matrix_media(
+            self._client, event, paths.matrix_files_dir, paths.workspace,
+        )
+
+        if not text:
+            return
+
+        key = SessionKey(chat_id=chat_id, topic_id=None)
+
         if self._config.streaming.enabled:
             await self._run_streaming(key, text, room_id, event)
         else:

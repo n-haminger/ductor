@@ -126,15 +126,17 @@ class CleanupObserver(BaseObserver):
             (self._paths.telegram_files_dir, self._cfg.telegram_files_days),
             (self._paths.output_to_user_dir, self._cfg.output_to_user_days),
             (self._paths.api_files_dir, self._cfg.api_files_days),
+            (self._paths.matrix_files_dir, self._cfg.telegram_files_days),
         ]
         results = await asyncio.to_thread(_run_cleanup, targets)
 
         if any(results):
             logger.info(
-                "Cleanup complete: telegram=%d, output=%d, api=%d",
+                "Cleanup complete: telegram=%d, output=%d, api=%d, matrix=%d",
                 results[0],
                 results[1],
                 results[2],
+                results[3],
             )
         else:
             logger.debug("Cleanup: nothing to delete")
