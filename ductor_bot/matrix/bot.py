@@ -156,7 +156,7 @@ class MatrixBot:
 
     async def run(self) -> int:
         """Login, sync, run event loop."""
-        from nio import InviteMemberEvent, RoomMessageText
+        from nio import InviteMemberEvent, ReactionEvent, RoomMessageText
 
         await login_or_restore(self._client, self._config.matrix, self._store_path)
 
@@ -165,6 +165,7 @@ class MatrixBot:
 
         # Register event callbacks
         self._client.add_event_callback(self._on_message, RoomMessageText)
+        self._client.add_event_callback(self._on_reaction, ReactionEvent)
         self._client.add_event_callback(self._on_invite, InviteMemberEvent)
 
         # Initial sync to populate room list (needed for notifications before
@@ -245,10 +246,11 @@ class MatrixBot:
         self._last_active_room = room_id
         chat_id = self._id_map.room_to_int(room_id)
 
-        # Check button match
+        # Check button match (text-input fallback for reactions)
         button_match = self._button_tracker.match_input(room_id, text)
         if button_match:
-            text = button_match
+            await self._handle_button_callback(room_id, "", button_match)
+            return
 
         # Handle commands (! prefix for Matrix, / also accepted)
         if text.startswith("!") or text.startswith("/"):
@@ -399,16 +401,7 @@ class MatrixBot:
                 return
             result = await orch.handle_message(key, text)
             if result and result.text:
-                out = result.text
-                # Render ButtonGrid as numbered text options for Matrix
-                if result.buttons and result.buttons.rows:
-                    labels = [btn.text for row in result.buttons.rows for btn in row]
-                    if labels:
-                        numbered = "\n".join(
-                            f"  {i + 1}. {lbl}" for i, lbl in enumerate(labels)
-                        )
-                        out = f"{out}\n\n{numbered}"
-                await self._send_rich(room_id, out)
+                await self._send_selector_response(room_id, result.text, result.buttons)
             return
 
         # --- Unknown command → treat as regular message ---
@@ -599,6 +592,119 @@ class MatrixBot:
         event_id = await matrix_send_rich(self._client, room_id, text)
         self._track_sent_event(event_id)
         return event_id
+
+    # --- Selector response (ButtonGrid → reactions) ---
+
+    async def _send_selector_response(
+        self,
+        room_id: str,
+        text: str,
+        buttons: object | None = None,
+    ) -> None:
+        """Send a selector response: text + optional reaction-based buttons."""
+        from ductor_bot.matrix.buttons import REACTION_DIGITS
+        from ductor_bot.orchestrator.selectors.models import ButtonGrid
+
+        if not isinstance(buttons, ButtonGrid) or not buttons.rows:
+            await self._send_rich(room_id, text)
+            return
+
+        all_buttons = [btn for row in buttons.rows for btn in row]
+        labels = [btn.text for btn in all_buttons]
+        cbs = [btn.callback_data for btn in all_buttons]
+
+        # Build numbered list with emoji digits
+        numbered = "\n".join(
+            f"  {REACTION_DIGITS[i]} {lbl}" if i < len(REACTION_DIGITS) else f"  {i + 1}. {lbl}"
+            for i, lbl in enumerate(labels)
+        )
+        out = f"{text}\n\n{numbered}"
+        event_id = await self._send_rich(room_id, out)
+
+        if event_id:
+            # Register for reaction matching
+            self._button_tracker.register_buttons(room_id, event_id, labels, cbs)
+            # Send reactions as clickable indicators
+            for i in range(min(len(labels), len(REACTION_DIGITS))):
+                try:
+                    await self._client.room_send(
+                        room_id,
+                        "m.reaction",
+                        {
+                            "m.relates_to": {
+                                "rel_type": "m.annotation",
+                                "event_id": event_id,
+                                "key": REACTION_DIGITS[i],
+                            }
+                        },
+                    )
+                except Exception:
+                    logger.debug("Failed to send reaction %d", i + 1, exc_info=True)
+                    break
+
+    # --- Reaction handling ---
+
+    async def _on_reaction(self, room: object, event: object) -> None:
+        """Handle m.reaction events for button selection."""
+        from nio import MatrixRoom, ReactionEvent
+
+        if not isinstance(room, MatrixRoom) or not isinstance(event, ReactionEvent):
+            return
+        if event.sender == self._client.user_id:
+            return  # Ignore own reactions
+
+        room_id = room.room_id
+        cb = self._button_tracker.match_reaction(room_id, event.reacts_to, event.key)
+        if cb is None:
+            return
+
+        logger.info("Reaction button match: room=%s key=%s cb=%s", room_id, event.key, cb)
+        await self._handle_button_callback(room_id, event.reacts_to, cb)
+
+    async def _handle_button_callback(self, room_id: str, message_event_id: str, callback_data: str) -> None:
+        """Route a button callback_data through the selector handlers."""
+        from ductor_bot.orchestrator.selectors.cron_selector import (
+            handle_cron_callback,
+            is_cron_selector_callback,
+        )
+        from ductor_bot.orchestrator.selectors.model_selector import (
+            handle_model_callback,
+            is_model_selector_callback,
+        )
+        from ductor_bot.orchestrator.selectors.session_selector import (
+            handle_session_callback,
+            is_session_selector_callback,
+        )
+        from ductor_bot.orchestrator.selectors.task_selector import (
+            handle_task_callback,
+            is_task_selector_callback,
+        )
+
+        orch = self._orchestrator
+        if not orch:
+            return
+
+        chat_id = self._id_map.room_to_int(room_id)
+        key = SessionKey(chat_id=chat_id, topic_id=None)
+        resp = None
+
+        if is_model_selector_callback(callback_data):
+            resp = await handle_model_callback(orch, key, callback_data)
+        elif is_cron_selector_callback(callback_data):
+            resp = await handle_cron_callback(orch, callback_data)
+        elif is_session_selector_callback(callback_data):
+            resp = await handle_session_callback(orch, chat_id, callback_data)
+        elif is_task_selector_callback(callback_data):
+            resp = await handle_task_callback(orch, callback_data)
+        else:
+            # Unknown callback — treat as text input to the orchestrator
+            result = await orch.handle_message(key, callback_data)
+            if result and result.text:
+                await self._send_rich(room_id, result.text)
+            return
+
+        if resp:
+            await self._send_selector_response(room_id, resp.text, resp.buttons)
 
     # --- Join notification ---
 
