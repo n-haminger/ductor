@@ -7,11 +7,7 @@ replies back to the original label.
 
 from __future__ import annotations
 
-import re
-
-
-# Regex for [button:Label] markers (same as in formatting.py)
-_BUTTON_RE = re.compile(r"\[button:([^\]]+)\]")
+from ductor_bot.matrix.formatting import BUTTON_RE as _BUTTON_RE
 
 
 class ButtonTracker:

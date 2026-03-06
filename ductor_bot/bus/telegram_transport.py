@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ductor_bot.bot.sender import SendRichOpts, send_rich
+from ductor_bot.bus.cron_sanitize import sanitize_cron_result_text
 from ductor_bot.bus.envelope import Envelope, Origin
 from ductor_bot.text.response_format import SEP, fmt
 
@@ -20,24 +21,6 @@ if TYPE_CHECKING:
     from ductor_bot.bot.app import TelegramBot
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Cron result sanitisation (moved from result_delivery)
-# ---------------------------------------------------------------------------
-
-_CRON_ACK_MARKERS = ("message sent successfully", "delivered to telegram")
-
-
-def _is_cron_transport_ack_line(line: str) -> bool:
-    normalized = " ".join(line.lower().split())
-    return all(marker in normalized for marker in _CRON_ACK_MARKERS)
-
-
-def _sanitize_cron_result_text(result: str) -> str:
-    if not result:
-        return ""
-    lines = [line for line in result.splitlines() if not _is_cron_transport_ack_line(line)]
-    return "\n".join(lines).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +216,7 @@ class TelegramTransport:
 
     async def _broadcast_cron(self, env: Envelope) -> None:
         title = env.metadata.get("title", "?")
-        clean_result = _sanitize_cron_result_text(env.result_text)
+        clean_result = sanitize_cron_result_text(env.result_text)
         if env.result_text and not clean_result and env.status == "success":
             logger.debug(
                 "Cron result only had transport confirmations; skipping broadcast task=%s", title

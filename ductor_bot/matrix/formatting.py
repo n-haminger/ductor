@@ -13,13 +13,13 @@ from __future__ import annotations
 import html
 import re
 
-# Regex for [button:Label] markers
-_BUTTON_RE = re.compile(r"\[button:([^\]]+)\]")
+# Regex for [button:Label] markers — shared with buttons.py
+BUTTON_RE = re.compile(r"\[button:([^\]]+)\]")
 
 
 def strip_button_markers(text: str) -> str:
     """Remove ``[button:...]`` markers from text."""
-    return _BUTTON_RE.sub("", text).rstrip()
+    return BUTTON_RE.sub("", text).rstrip()
 
 
 def markdown_to_matrix_html(text: str) -> tuple[str, str]:
@@ -35,6 +35,8 @@ def markdown_to_matrix_html(text: str) -> tuple[str, str]:
 
 def _convert_markdown(text: str) -> str:
     """Convert a subset of Markdown to HTML."""
+    if not text:
+        return ""
     lines = text.split("\n")
     result: list[str] = []
     in_code_block = False

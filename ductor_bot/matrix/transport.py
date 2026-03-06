@@ -10,6 +10,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from ductor_bot.bus.cron_sanitize import sanitize_cron_result_text
 from ductor_bot.bus.envelope import Envelope, Origin
 from ductor_bot.matrix.sender import MatrixSendOpts
 from ductor_bot.matrix.sender import send_rich as matrix_send_rich
@@ -19,24 +20,6 @@ if TYPE_CHECKING:
     from ductor_bot.matrix.bot import MatrixBot
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Cron result sanitisation (same logic as telegram_transport)
-# ---------------------------------------------------------------------------
-
-_CRON_ACK_MARKERS = ("message sent successfully", "delivered to telegram")
-
-
-def _is_cron_transport_ack_line(line: str) -> bool:
-    normalized = " ".join(line.lower().split())
-    return all(marker in normalized for marker in _CRON_ACK_MARKERS)
-
-
-def _sanitize_cron_result_text(result: str) -> str:
-    if not result:
-        return ""
-    lines = [line for line in result.splitlines() if not _is_cron_transport_ack_line(line)]
-    return "\n".join(lines).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +173,7 @@ class MatrixTransport:
 
     async def _broadcast_cron(self, env: Envelope) -> None:
         title = env.metadata.get("title", "?")
-        clean_result = _sanitize_cron_result_text(env.result_text)
+        clean_result = sanitize_cron_result_text(env.result_text)
         if env.result_text and not clean_result and env.status == "success":
             return
         text = (

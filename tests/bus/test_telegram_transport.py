@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ductor_bot.bus.envelope import Envelope, Origin
-from ductor_bot.bus.telegram_transport import (
-    TelegramTransport,
-    _is_cron_transport_ack_line,
-    _sanitize_cron_result_text,
+from ductor_bot.bus.cron_sanitize import (
+    is_cron_transport_ack_line,
+    sanitize_cron_result_text,
 )
+from ductor_bot.bus.envelope import Envelope, Origin
+from ductor_bot.bus.telegram_transport import TelegramTransport
 
 if TYPE_CHECKING:
     import pytest
@@ -52,21 +52,21 @@ def _env(**kwargs: object) -> Envelope:
 class TestCronSanitisation:
     def test_ack_line_detected(self) -> None:
         line = 'Message sent successfully. "Hi" delivered to Telegram (id 5)'
-        assert _is_cron_transport_ack_line(line) is True
+        assert is_cron_transport_ack_line(line) is True
 
     def test_non_ack_line(self) -> None:
-        assert _is_cron_transport_ack_line("Hello world") is False
+        assert is_cron_transport_ack_line("Hello world") is False
 
     def test_sanitize_strips_ack(self) -> None:
         raw = 'Useful output\nMessage sent successfully. "Hi" delivered to Telegram (id 5).'
-        assert _sanitize_cron_result_text(raw) == "Useful output"
+        assert sanitize_cron_result_text(raw) == "Useful output"
 
     def test_sanitize_empty(self) -> None:
-        assert _sanitize_cron_result_text("") == ""
+        assert sanitize_cron_result_text("") == ""
 
     def test_sanitize_ack_only(self) -> None:
         raw = 'Message sent successfully. "Hi" delivered to Telegram (id 5).'
-        assert _sanitize_cron_result_text(raw) == ""
+        assert sanitize_cron_result_text(raw) == ""
 
 
 # ---------------------------------------------------------------------------

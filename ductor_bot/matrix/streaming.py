@@ -6,6 +6,7 @@ the original via ``m.relates_to`` with ``rel_type: m.replace``.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING
 
@@ -13,8 +14,6 @@ from ductor_bot.matrix.formatting import markdown_to_matrix_html
 
 if TYPE_CHECKING:
     from nio import AsyncClient
-
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -77,6 +77,8 @@ async def send_rich(
             resp = await client.room_send(room_id, "m.room.message", content)
             if hasattr(resp, "event_id"):
                 last_event_id = resp.event_id
+            else:
+                logger.warning("room_send failed for %s: %s", room_id, resp)
 
     # 4. Upload and send files
     for file_path_str in files:
@@ -147,34 +149,37 @@ async def _upload_and_send_file(
     send_resp = await client.room_send(room_id, "m.room.message", content)
     if hasattr(send_resp, "event_id"):
         return send_resp.event_id
+    logger.warning("File send failed for %s in %s: %s", file_name, room_id, send_resp)
     return None
 
 
 def _split_text(
     plain: str, html_body: str
 ) -> list[tuple[str, str]]:
-    """Split text into chunks that fit within the Matrix event size limit."""
-    # Simple split: by lines
-    plain_lines = plain.split("\n")
-    html_lines = html_body.split("\n")
+    """Split text into chunks that fit within the Matrix event size limit.
 
-    chunks: list[tuple[str, str]] = []
-    cur_plain: list[str] = []
-    cur_html: list[str] = []
+    Splits the raw plain text by lines and converts each chunk independently
+    so that plain/HTML line counts always match.
+    """
+    plain_lines = plain.split("\n")
+
+    raw_chunks: list[str] = []
+    cur_lines: list[str] = []
     cur_size = 0
 
-    for p_line, h_line in zip(plain_lines, html_lines, strict=False):
-        line_size = len(h_line.encode()) + 1
-        if cur_size + line_size > _MAX_EVENT_SIZE and cur_plain:
-            chunks.append(("\n".join(cur_plain), "\n".join(cur_html)))
-            cur_plain = []
-            cur_html = []
+    for line in plain_lines:
+        line_size = len(line.encode()) + 1
+        if cur_size + line_size > _MAX_EVENT_SIZE and cur_lines:
+            raw_chunks.append("\n".join(cur_lines))
+            cur_lines = []
             cur_size = 0
-        cur_plain.append(p_line)
-        cur_html.append(h_line)
+        cur_lines.append(line)
         cur_size += line_size
 
-    if cur_plain:
-        chunks.append(("\n".join(cur_plain), "\n".join(cur_html)))
+    if cur_lines:
+        raw_chunks.append("\n".join(cur_lines))
 
-    return chunks if chunks else [("", "")]
+    if not raw_chunks:
+        return [("", "")]
+
+    return [markdown_to_matrix_html(chunk) for chunk in raw_chunks]

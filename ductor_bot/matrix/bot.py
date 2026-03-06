@@ -52,9 +52,16 @@ class MatrixNotificationService:
         if room_id:
             event_id = await matrix_send_rich(self._bot.client, room_id, text)
             self._bot._track_sent_event(event_id)
+        else:
+            logger.warning("notify: cannot resolve chat_id=%d to room, falling back to notify_all", chat_id)
+            await self.notify_all(text)
 
     async def notify_all(self, text: str) -> None:
-        for room_id in self._bot.config.matrix.allowed_rooms:
+        rooms = self._bot.config.matrix.allowed_rooms
+        # Fallback: if no allowed_rooms configured, use last active room
+        if not rooms and self._bot._last_active_room:
+            rooms = [self._bot._last_active_room]
+        for room_id in rooms:
             event_id = await matrix_send_rich(self._bot.client, room_id, text)
             self._bot._track_sent_event(event_id)
 
@@ -101,6 +108,12 @@ class MatrixBot:
 
         # Track sent event IDs for reply-to-bot detection (bounded)
         self._sent_event_ids: deque[str] = deque(maxlen=1000)
+
+        # Rooms currently in join→leave cycle (reject flow)
+        self._leaving_rooms: set[str] = set()
+
+        # Last room that sent a message (fallback for delivery when allowed_rooms is empty)
+        self._last_active_room: str | None = None
 
     # --- BotProtocol implementation ---
 
@@ -154,6 +167,11 @@ class MatrixBot:
         self._client.add_event_callback(self._on_message, RoomMessageText)
         self._client.add_event_callback(self._on_invite, InviteMemberEvent)
 
+        # Initial sync to populate room list (needed for notifications before
+        # any user message arrives, e.g. inter-agent delivery).
+        await self._client.sync(timeout=10000, full_state=True)
+        self._populate_rooms_from_sync()
+
         # Run startup (orchestrator, observers, hooks)
         from ductor_bot.matrix.startup import run_matrix_startup
 
@@ -169,6 +187,8 @@ class MatrixBot:
             await self._client.sync_forever(timeout=30000, full_state=True)
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("sync_forever exited with error")
 
         return self._exit_code
 
@@ -203,6 +223,9 @@ class MatrixBot:
         if event.sender == self._client.user_id:
             return  # Ignore own messages
 
+        if room.room_id in self._leaving_rooms:
+            return  # Room is in join→leave rejection cycle
+
         if not self._is_authorized(room, event):
             return
 
@@ -219,6 +242,7 @@ class MatrixBot:
             text = self._strip_mention(text)
 
         room_id = room.room_id
+        self._last_active_room = room_id
         chat_id = self._id_map.room_to_int(room_id)
 
         # Check button match
@@ -586,10 +610,41 @@ class MatrixBot:
             logger.info("Auto-joined room: %s", room_id)
         elif self._allowed_rooms_set:
             # Unauthorized room — join briefly to send rejection, then leave
-            await self._client.join(room_id)
-            await self._send_rich(room_id, "This bot is not authorized for this room.")
-            await self._client.room_leave(room_id)
-            logger.info("Auto-left unauthorized room: %s", room_id)
+            self._leaving_rooms.add(room_id)
+            try:
+                await self._client.join(room_id)
+                await self._send_rich(room_id, "This bot is not authorized for this room.")
+                await self._client.room_leave(room_id)
+                logger.info("Auto-left unauthorized room: %s", room_id)
+            finally:
+                self._leaving_rooms.discard(room_id)
+
+    # --- Room discovery ---
+
+    def _populate_rooms_from_sync(self) -> None:
+        """Pre-populate id_map and _last_active_room from joined rooms.
+
+        After the initial sync, ``self._client.rooms`` contains all joined
+        rooms.  We register them in the id_map so that inter-agent
+        notifications can resolve a target room even before a user sends a
+        direct message.
+        """
+        rooms = getattr(self._client, "rooms", {})
+        if not rooms:
+            return
+        for room_id in rooms:
+            self._id_map.room_to_int(room_id)  # ensure mapping exists
+        # Set _last_active_room to the first DM-like room, or any room
+        if self._last_active_room is None:
+            # Prefer DM rooms (unnamed, ≤2 members) as default target
+            for room_id, room in rooms.items():
+                if self._is_dm_room(room):
+                    self._last_active_room = room_id
+                    break
+            # Fallback: first joined room
+            if self._last_active_room is None:
+                self._last_active_room = next(iter(rooms))
+        logger.info("Populated %d rooms from sync, default=%s", len(rooms), self._last_active_room)
 
     # --- Sync token persistence ---
 
@@ -610,6 +665,11 @@ class MatrixBot:
         from ductor_bot.bus.adapters import from_interagent_result
 
         chat_id = self._default_chat_id()
+        if not chat_id:
+            logger.warning("No chat_id for async interagent result (task=%s) — delivering to all rooms", result.task_id)
+            text = result.result_text or f"Inter-agent result from {result.recipient}"
+            await self._notification_service.notify_all(text)
+            return
         await self._bus.submit(from_interagent_result(result, chat_id))
 
     async def on_task_result(self, result: TaskResult) -> None:
@@ -632,9 +692,12 @@ class MatrixBot:
         await self._bus.submit(from_task_question(task_id, question, prompt_preview, chat_id))
 
     def _default_chat_id(self) -> int:
-        """First allowed room as default delivery target."""
+        """Default delivery target: first allowed room, or last active room."""
         if self._config.matrix.allowed_rooms:
             return self._id_map.room_to_int(self._config.matrix.allowed_rooms[0])
+        if self._last_active_room:
+            return self._id_map.room_to_int(self._last_active_room)
+        logger.warning("No default chat_id: no allowed_rooms and no active room yet")
         return 0
 
     # --- Restart watcher ---
