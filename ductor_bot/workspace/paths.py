@@ -95,6 +95,12 @@ class DuctorPaths:
     def api_files_dir(self) -> Path:
         return self.workspace / "api_files"
 
+    def media_files_dir(self, transport: str) -> Path:
+        """Return the media files directory for the given transport."""
+        if transport == "matrix":
+            return self.matrix_files_dir
+        return self.telegram_files_dir
+
     @property
     def memory_system_dir(self) -> Path:
         return self.workspace / "memory_system"

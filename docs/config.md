@@ -217,7 +217,7 @@ Runtime note:
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `enabled` | `bool` | `true` | Master toggle |
-| `telegram_files_days` | `int` | `30` | Retention in `workspace/telegram_files/` |
+| `media_files_days` | `int` | `30` | Retention for media files (telegram + matrix) |
 | `output_to_user_days` | `int` | `30` | Retention in `workspace/output_to_user/` |
 | `api_files_days` | `int` | `30` | Retention in `workspace/api_files/` |
 | `check_hour` | `int` | `3` | Local hour in `user_timezone` for cleanup run |

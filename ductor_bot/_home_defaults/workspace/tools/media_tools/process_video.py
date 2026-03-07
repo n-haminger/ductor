@@ -5,8 +5,8 @@ Requires: ffmpeg + ffprobe (system packages).
 Optional:  openai-whisper or whisper.cpp (for audio transcription).
 
 Usage:
-    python tools/telegram_tools/process_video.py --file /path/to/video.mp4
-    python tools/telegram_tools/process_video.py --file /path/to/video.mp4 --max-frames 5
+    python tools/media_tools/process_video.py --file /path/to/video.mp4
+    python tools/media_tools/process_video.py --file /path/to/video.mp4 --max-frames 5
 """
 from __future__ import annotations
 

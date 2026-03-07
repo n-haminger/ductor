@@ -36,7 +36,7 @@ Use `tools/CLAUDE/GEMINI/AGENTS.md` as the index, then open the matching subfold
 
 - `tools/cron_tools/CLAUDE/GEMINI/AGENTS.md`
 - `tools/webhook_tools/CLAUDE/GEMINI/AGENTS.md`
-- `tools/telegram_tools/CLAUDE/GEMINI/AGENTS.md`
+- `tools/media_tools/CLAUDE/GEMINI/AGENTS.md`
 - `tools/agent_tools/CLAUDE/GEMINI/AGENTS.md`
 - `tools/task_tools/CLAUDE/GEMINI/AGENTS.md` — background task delegation
 - `tools/user_tools/CLAUDE/GEMINI/AGENTS.md`

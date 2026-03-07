@@ -4,8 +4,8 @@
 Supports: PDF (via pypdf), plain text, CSV, JSON, Markdown.
 
 Usage:
-    python tools/telegram_tools/read_document.py --file /path/to/document.pdf
-    python tools/telegram_tools/read_document.py --file /path/to/document.pdf --max-pages 10
+    python tools/media_tools/read_document.py --file /path/to/document.pdf
+    python tools/media_tools/read_document.py --file /path/to/document.pdf --max-pages 10
 """
 from __future__ import annotations
 

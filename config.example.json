@@ -44,7 +44,7 @@
     },
     "cleanup": {
         "enabled": true,
-        "telegram_files_days": 30,
+        "media_files_days": 30,
         "output_to_user_days": 30,
         "check_hour": 3
     },

@@ -377,7 +377,7 @@ def main() -> None:
         print(f"  Model: {resolved_model}")
     print(f"\nThe agent starts automatically within a few seconds.")
     if transport == "telegram":
-        print(f"The user can open the sub-agent's Telegram bot chat to talk to it directly.")
+        print(f"The user can open the sub-agent's bot chat in Telegram to talk to it directly.")
     else:
         print(f"The user can message the bot at {args.user_id} in Matrix.")
         if not args.password:

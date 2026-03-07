@@ -101,10 +101,18 @@ class CleanupConfig(BaseModel):
     """Settings for automatic file cleanup of workspace directories."""
 
     enabled: bool = True
-    telegram_files_days: int = 30
+    media_files_days: int = 30
     output_to_user_days: int = 30
     api_files_days: int = 30
     check_hour: int = 3
+
+    def __init__(self, **data: object) -> None:
+        # Backwards compat: accept old name ``telegram_files_days``.
+        if "telegram_files_days" in data and "media_files_days" not in data:
+            data["media_files_days"] = data.pop("telegram_files_days")  # type: ignore[union-attr]
+        elif "telegram_files_days" in data:
+            data.pop("telegram_files_days")  # type: ignore[union-attr]
+        super().__init__(**data)
 
 
 class CLIParametersConfig(BaseModel):

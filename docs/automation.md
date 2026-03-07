@@ -198,7 +198,7 @@ Deletes old files (recursive) from:
 
 Retention windows:
 
-- `cleanup.telegram_files_days`
+- `cleanup.media_files_days`
 - `cleanup.output_to_user_days`
 - `cleanup.api_files_days`
 
@@ -218,7 +218,7 @@ Cleanup also prunes empty subdirectories after deletion, so dated upload folders
   },
   "cleanup": {
     "enabled": true,
-    "telegram_files_days": 30,
+    "media_files_days": 30,
     "output_to_user_days": 30,
     "api_files_days": 30,
     "check_hour": 3

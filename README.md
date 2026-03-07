@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Claude Code, Codex CLI, and Gemini CLI as your Telegram assistant.</strong><br>
+  <strong>Claude Code, Codex CLI, and Gemini CLI as your coding assistant — via Telegram or Matrix.</strong><br>
   Uses only official CLIs. Nothing spoofed, nothing proxied.
 </p>
 
@@ -23,7 +23,7 @@
 
 ---
 
-If you want to control Claude Code, Google's Gemini CLI, or OpenAI's Codex CLI via Telegram, build automations, or manage multiple agents easily — ductor is the right tool for you.
+If you want to control Claude Code, Google's Gemini CLI, or OpenAI's Codex CLI via Telegram or Matrix, build automations, or manage multiple agents easily — ductor is the right tool for you.
 
 ductor runs on your machine and sends simple console commands as if you were typing them yourself, so you can use your active subscriptions (Claude Max, etc.) directly. No API proxying, no SDK patching, no spoofed headers. Just the official CLIs, executed as subprocesses, with all state kept in plain JSON and Markdown under `~/.ductor/`.
 
@@ -39,9 +39,9 @@ pipx install ductor
 ductor
 ```
 
-The onboarding wizard handles CLI checks, Telegram setup, timezone, optional Docker, and optional background service install.
+The onboarding wizard handles CLI checks, transport setup (Telegram or Matrix), timezone, optional Docker, and optional background service install.
 
-**Requirements:** Python 3.11+, at least one CLI installed (`claude`, `codex`, or `gemini`), a Telegram Bot Token from [@BotFather](https://t.me/BotFather).
+**Requirements:** Python 3.11+, at least one CLI installed (`claude`, `codex`, or `gemini`), and either a Telegram Bot Token from [@BotFather](https://t.me/BotFather) or a Matrix account on any homeserver.
 
 Detailed setup: [`docs/installation.md`](docs/installation.md)
 
@@ -51,7 +51,7 @@ ductor gives you multiple ways to interact with your coding agents. Each level b
 
 ### 1. Single chat (your main agent)
 
-This is where everyone starts. You get a private 1:1 Telegram chat with your bot. Every message goes to the CLI you have active (`claude`, `codex`, or `gemini`), responses stream back in real time.
+This is where everyone starts. You get a private 1:1 chat with your bot (Telegram or Matrix). Every message goes to the CLI you have active (`claude`, `codex`, or `gemini`), responses stream back in real time.
 
 ```text
 You:   "Explain the auth flow in this codebase"

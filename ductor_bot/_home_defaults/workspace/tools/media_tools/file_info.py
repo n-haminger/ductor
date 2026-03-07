@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Get metadata about a specific received Telegram file.
+"""Get metadata about a specific received media file.
 
 Usage:
-    python tools/telegram_tools/file_info.py --file /path/to/telegram_files/2025-01-15/photo_abc.jpg
+    python tools/media_tools/file_info.py --file /path/to/media_files/2025-01-15/photo_abc.jpg
 """
 from __future__ import annotations
 
@@ -14,9 +14,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-_TELEGRAM_FILES = Path(
+_DUCTOR_HOME = Path(
     os.environ.get("DUCTOR_HOME", str(Path.home() / ".ductor"))
-).expanduser() / "workspace" / "telegram_files"
+).expanduser()
+
+_MEDIA_DIRS = (
+    _DUCTOR_HOME / "workspace" / "telegram_files",
+    _DUCTOR_HOME / "workspace" / "matrix_files",
+    _DUCTOR_HOME / "workspace" / "api_files",
+)
 
 
 def main() -> None:
@@ -25,8 +31,8 @@ def main() -> None:
     args = parser.parse_args()
 
     path = Path(args.file).resolve()
-    if not path.is_relative_to(_TELEGRAM_FILES.resolve()):
-        print(json.dumps({"error": f"Path outside telegram_files: {path}"}))
+    if not any(path.is_relative_to(d.resolve()) for d in _MEDIA_DIRS if d.exists()):
+        print(json.dumps({"error": f"Path outside media directories: {path}"}))
         sys.exit(1)
     if not path.exists():
         print(json.dumps({"error": f"File not found: {path}"}))

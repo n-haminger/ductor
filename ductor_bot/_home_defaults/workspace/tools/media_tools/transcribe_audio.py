@@ -7,7 +7,7 @@ Strategies (tried in order):
 3. Local `whisper-cli` (whisper.cpp)
 
 Usage:
-    python tools/telegram_tools/transcribe_audio.py --file /path/to/audio.ogg
+    python tools/media_tools/transcribe_audio.py --file /path/to/audio.ogg
 """
 from __future__ import annotations
 

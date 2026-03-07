@@ -264,12 +264,11 @@ _REQUIRED_DIRS = (
     "workspace/tools",
     "workspace/tools/user_tools",
     "workspace/tools/cron_tools",
-    "workspace/tools/telegram_tools",
+    "workspace/tools/media_tools",
     "workspace/tools/webhook_tools",
     "workspace/tools/agent_tools",
     "workspace/output_to_user",
     "workspace/tasks",
-    "workspace/telegram_files",
     "workspace/skills",
     "config",
 )
@@ -443,7 +442,7 @@ Use async for tasks that may take more than a few seconds.
 
 When you delegate a task asynchronously, the sub-agent processes it in a \
 Named Session called `ia-{name}`. The user can continue that session \
-in the sub-agent's Telegram chat via `@ia-{name} <message>`. When \
+in the sub-agent's chat via `@ia-{name} <message>`. When \
 reporting results to the user, mention this session name so they know \
 how to follow up directly with the sub-agent.
 """
@@ -468,7 +467,7 @@ _IDENTITY_SUB = """
 
 **Important**: Responses always come back to the calling agent, never to \
 a different chat. There is no way to send answers to another agent's \
-Telegram chat via these tools.
+chat via these tools.
 
 ### Inter-Agent Named Sessions
 
