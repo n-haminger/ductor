@@ -15,22 +15,23 @@ One Python process hosts:
 
 Each agent stack contains:
 
-- `TelegramBot` (aiogram ingress)
+- Transport bot (`TelegramBot` or `MatrixBot`, selected via `config.transport`)
 - `Orchestrator` (routing + flows)
 - `CLIService` (provider wrappers)
 - provider subprocesses (`claude`, `codex`, `gemini`)
 
-## 2) Primary Telegram message path
+## 2) Primary message path
 
 ```text
-Telegram update
-  -> AuthMiddleware
-  -> SequentialMiddleware (shared lock pool + queue)
-  -> bot handlers
-  -> Orchestrator.handle_message(_streaming)
-  -> CLIService
-  -> provider subprocess
-  -> Telegram response (stream edits or one-shot)
+Telegram:                                 Matrix:
+  Telegram update                           Matrix sync event
+  -> AuthMiddleware                         -> room/user allowlist check
+  -> SequentialMiddleware                   -> MatrixBot handler
+  -> bot handlers                           -> Orchestrator.handle_message(_streaming)
+  -> Orchestrator.handle_message(_streaming)-> CLIService
+  -> CLIService                             -> provider subprocess
+  -> provider subprocess                    -> Matrix room message
+  -> Telegram response (stream edits)
 ```
 
 Notes:
@@ -64,7 +65,7 @@ All observer/task/inter-agent results now flow through `bus/`:
 - wrap to `Envelope` (`bus/adapters.py`)
 - route via `MessageBus`
 - optional lock + optional injection into active session
-- deliver through `TelegramTransport`
+- deliver through registered transport (Telegram or Matrix)
 
 A single shared `LockPool` is used by Telegram middleware, API server, and message bus.
 
@@ -126,7 +127,7 @@ Sub-agent home: `~/.ductor/agents/<name>/` with its own config/workspace/session
 1. `ductor_bot/__main__.py` (entrypoint + config/load/run)
 2. `ductor_bot/cli_commands/` (actual CLI subcommand logic)
 3. `ductor_bot/multiagent/supervisor.py` (always-on runtime wrapper)
-4. `ductor_bot/bot/app.py` + `bot/startup.py` (Telegram lifecycle + ingress)
+4. `ductor_bot/bot/app.py` + `bot/startup.py` (Telegram), `ductor_bot/matrix/bot.py` (Matrix)
 5. `ductor_bot/orchestrator/core.py` + `orchestrator/lifecycle.py`
 6. `ductor_bot/bus/*` (unified delivery/injection)
 7. `ductor_bot/tasks/hub.py` + `tasks/registry.py`
@@ -134,12 +135,13 @@ Sub-agent home: `~/.ductor/agents/<name>/` with its own config/workspace/session
 
 ## 9) Command surface (high level)
 
-Telegram core:
+Chat commands (Telegram and Matrix):
 
 - `/new`, `/stop`, `/stop_all`, `/model`, `/status`, `/memory`, `/session`, `/sessions`, `/tasks`, `/cron`, `/diagnose`, `/upgrade`
 - hidden utility commands: `/where`, `/leave` (work but are not in command popup)
+- Matrix uses `!` prefix by default (e.g. `!help`, `!status`); `/` also works but may conflict with Element's built-in commands
 
-Telegram main-agent only:
+Main-agent only (Telegram):
 
 - `/agents`, `/agent_start`, `/agent_stop`, `/agent_restart`, `/agent_commands`
 

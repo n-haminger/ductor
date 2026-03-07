@@ -19,8 +19,8 @@ Missing values are omitted.
 
 Operation codes currently used:
 
-- `msg`: incoming Telegram message (`SequentialMiddleware`)
-- `cb`: callback query (`TelegramBot._on_callback_query`)
+- `msg`: incoming chat message (`SequentialMiddleware` / `MatrixBot`)
+- `cb`: callback query (`TelegramBot._on_callback_query` / Matrix button handler)
 - `cron`: cron execution (`CronObserver._execute_job`)
 - `hb`: heartbeat run (`HeartbeatObserver._run_for_chat`)
 - `wh`: webhook request / webhook wake dispatch

@@ -52,12 +52,14 @@ API config persistence note:
 | `permission_mode` | `str` | `"bypassPermissions"` | Provider sandbox/approval mode |
 | `cli_timeout` | `float` | `600.0` | Legacy/global timeout. Still used by cron/webhook `cron_task`, inter-agent turns, stale-process heartbeat cleanup, and as fallback for unknown timeout paths |
 | `reasoning_effort` | `str` | `"medium"` | Default Codex reasoning level |
-| `file_access` | `str` | `"all"` | File access scope (`all`, `home`, `workspace`) for Telegram sends and API `GET /files`; unknown values fall back to workspace-only |
+| `file_access` | `str` | `"all"` | File access scope (`all`, `home`, `workspace`) for file sends and API `GET /files`; unknown values fall back to workspace-only |
 | `gemini_api_key` | `str \| None` | `None` | Config fallback key injected for Gemini API-key mode |
-| `telegram_token` | `str` | `""` | Telegram bot token |
+| `transport` | `str` | `"telegram"` | Messaging transport: `"telegram"` or `"matrix"` |
+| `telegram_token` | `str` | `""` | Telegram bot token (required when `transport=telegram`) |
 | `allowed_user_ids` | `list[int]` | `[]` | Telegram user allowlist (applies in both private and group chats) |
 | `allowed_group_ids` | `list[int]` | `[]` | Telegram group allowlist (which groups the bot can operate in; default `[]` = no groups, fail-closed). In groups, both the group and the user must be allowlisted |
 | `group_mention_only` | `bool` | `false` | In allowlisted group chats, only process messages that explicitly mention or reply to the bot (mention-gating filter; not an auth bypass) |
+| `matrix` | `MatrixConfig` | see below | Matrix homeserver connection (required when `transport=matrix`) |
 | `streaming` | `StreamingConfig` | see below | Streaming tuning |
 | `docker` | `DockerConfig` | see below | Docker sidecar config |
 | `heartbeat` | `HeartbeatConfig` | see below | Background heartbeat config |
@@ -67,6 +69,25 @@ API config persistence note:
 | `cli_parameters` | `CLIParametersConfig` | see below | Provider-specific extra CLI flags |
 | `timeouts` | `TimeoutConfig` | see below | Path-specific timeout policy (`normal`, `background`, `subagent`) |
 | `tasks` | `TasksConfig` | see below | Delegated background task system (`TaskHub`) |
+
+## `MatrixConfig`
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `homeserver` | `str` | `""` | Matrix homeserver URL (e.g. `https://matrix.org`) |
+| `user_id` | `str` | `""` | Bot user ID (e.g. `@ductor:matrix.org`) |
+| `password` | `str` | `""` | Password for initial login |
+| `access_token` | `str` | `""` | Persisted after first login (auto-managed) |
+| `device_id` | `str` | `""` | Persisted after first login (auto-managed) |
+| `allowed_rooms` | `list[str]` | `[]` | Room IDs or aliases the bot may operate in |
+| `allowed_users` | `list[str]` | `[]` | Matrix user IDs allowed to interact |
+| `store_path` | `str` | `"matrix_store"` | E2EE key store directory, relative to `ductor_home` |
+
+Notes:
+
+- `access_token` and `device_id` are auto-populated after first successful login and persisted back to `config.json`.
+- The bot supports end-to-end encrypted rooms via `matrix-nio[e2e]`.
+- `allowed_rooms` and `allowed_users` together form the Matrix auth model.
 
 ## `CLIParametersConfig`
 
@@ -281,7 +302,7 @@ Observer lifecycle caveat:
 
 Restart-required top-level fields:
 
-- `telegram_token`
+- `transport`, `telegram_token`, `matrix`
 - `docker`, `api`, `webhooks`
 - `ductor_home`, `log_level`, `gemini_api_key`, `timeouts`, `tasks`
 
@@ -365,7 +386,9 @@ Managed via:
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `name` | `str` | yes | | Unique lowercase identifier |
-| `telegram_token` | `str` | yes | | Separate bot token from @BotFather |
+| `transport` | `str` | no | inherited | `"telegram"` or `"matrix"` |
+| `telegram_token` | `str` | conditional | | Required when `transport=telegram` |
+| `matrix` | `MatrixConfig` | conditional | | Required when `transport=matrix` |
 | `allowed_user_ids` | `list[int]` | no | `[]` | Telegram user allowlist |
 | `allowed_group_ids` | `list[int]` | no | `[]` | Telegram group allowlist |
 | `provider` | `str` | no | inherited | Default provider |
@@ -413,8 +436,14 @@ Example:
   },
   {
     "name": "coder",
-    "telegram_token": "654321:XYZ...",
-    "allowed_user_ids": [12345678],
+    "transport": "matrix",
+    "matrix": {
+      "homeserver": "https://matrix.example.com",
+      "user_id": "@coder:example.com",
+      "password": "...",
+      "allowed_rooms": ["!room:example.com"],
+      "allowed_users": ["@user:example.com"]
+    },
     "provider": "codex",
     "reasoning_effort": "high"
   }
@@ -431,7 +460,7 @@ Example:
 Then it always forces:
 
 - `ductor_home = ~/.ductor/agents/<name>/`
-- `telegram_token`, `allowed_user_ids`, and `allowed_group_ids` from the sub-agent entry
+- `transport`, `telegram_token`, `matrix`, `allowed_user_ids`, and `allowed_group_ids` from the sub-agent entry
 - `api.enabled = false` when no explicit `api` block is provided
 
 Notes:

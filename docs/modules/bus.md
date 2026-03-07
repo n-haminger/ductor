@@ -44,7 +44,7 @@ Lock key: `envelope.lock_key -> (chat_id, topic_id)`.
 5. run optional pre-delivery hook
 6. fan-out delivery to all registered transports
 
-Current transport: Telegram (`TelegramTransport`).
+Registered transports: `TelegramTransport` and `MatrixTransport`.
 
 ## Adapter mapping (`adapters.py`)
 
@@ -66,7 +66,7 @@ Task/topic nuance:
 
 ## Wiring
 
-- `TelegramBot` creates `MessageBus(lock_pool=self._lock_pool)` and registers `TelegramTransport`
+- The active bot (Telegram or Matrix) creates `MessageBus(lock_pool=self._lock_pool)` and registers its transport
 - `run_startup()` calls `orch.wire_observers_to_bus(bot._bus, wake_handler=...)`
 - `ObserverManager.wire_to_bus(...)` connects cron/heartbeat/background/webhook callbacks in one call
 - `bus.set_injector(orchestrator)` enables prompt injection paths

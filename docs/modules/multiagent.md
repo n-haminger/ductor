@@ -87,7 +87,7 @@ Merge behavior:
 
 Isolated per sub-agent:
 
-- Telegram token/auth
+- transport credentials and auth (Telegram token or Matrix account)
 - workspace and files under `~/.ductor/agents/<name>/`
 - `sessions.json`, `named_sessions.json`, cron/webhook state
 

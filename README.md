@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> &middot;
   <a href="#how-chats-work">How chats work</a> &middot;
-  <a href="#telegram-commands">Commands</a> &middot;
+  <a href="#commands">Commands</a> &middot;
   <a href="docs/README.md">Docs</a> &middot;
   <a href="#contributing">Contributing</a>
 </p>
@@ -193,6 +193,8 @@ Main chat:  "Ask codex-agent to write tests for the API"
 
 ## Auth
 
+### Telegram
+
 ductor uses a dual-allowlist model. Every message must pass both checks.
 
 | Chat type | Check |
@@ -210,7 +212,16 @@ All three are **hot-reloadable** — edit `config.json` and changes take effect 
 
 **Group management:** When the bot is added to a group not in `allowed_group_ids`, it warns and auto-leaves. Use `/where` to see tracked groups and their IDs.
 
-## Telegram commands
+### Matrix
+
+Matrix auth uses room and user allowlists in the `matrix` config block:
+
+- **`allowed_rooms`** — Room IDs or aliases where the bot may operate.
+- **`allowed_users`** — Matrix user IDs allowed to interact with the bot.
+
+The bot logs in with password on first start, then persists `access_token` and `device_id` for subsequent runs. E2EE is supported via `matrix-nio[e2e]`.
+
+## Commands
 
 | Command | Description |
 |---|---|
@@ -274,7 +285,8 @@ ductor api enable       # Enable WebSocket API (beta)
     memory_system/MAINMEMORY.md      # Persistent memory
     cron_tasks/ skills/ tools/       # Scripts and tools
     tasks/                           # Per-task folders
-    telegram_files/ output_to_user/  # File I/O
+    telegram_files/ matrix_files/    # Media files (per transport)
+    output_to_user/                  # Generated deliverables
   agents/<name>/                     # Sub-agent workspaces (isolated)
 ```
 

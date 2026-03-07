@@ -8,7 +8,7 @@ Alternative to the Telegram transport — selected via `config.transport = "matr
 
 - `matrix/bot.py`: `MatrixBot` class implementing `BotProtocol`; message ingestion, command routing, authorization, streaming
 - `matrix/transport.py`: `MatrixTransport` adapter for `MessageBus`; maps envelopes to Matrix room messages
-- `matrix/sender.py`: message formatting and sending; Markdown→HTML, file upload, message splitting
+- `matrix/sender.py`: message formatting and sending; Markdown→HTML, file upload, message splitting, redaction helpers
 - `matrix/credentials.py`: login flow (saved credentials → config token → password login)
 - `matrix/id_map.py`: bidirectional `room_id` ↔ `int` mapping (deterministic SHA256)
 - `matrix/buttons.py`: reaction-based button replacement; emoji digits + numbered text fallback
@@ -32,8 +32,8 @@ Files are auto-cleaned by `CleanupObserver` using the same retention as Telegram
 Matrix uses **segment-based streaming**: text is buffered and flushed as separate messages at tool/system boundaries.
 
 - `_on_delta()`: accumulates text into buffer
-- `_on_tool()`: flushes buffer as message, sends `**[TOOL: name]**` tag, re-sets typing indicator
-- `_on_system()`: flushes buffer, sends `*[STATUS]*` tag (THINKING, COMPACTING, etc.), re-sets typing indicator
+- `_on_tool()`: flushes buffer as message; tool/system markers are suppressed (not sent to chat) to keep the conversation clean
+- `_on_system()`: flushes buffer; status markers are also suppressed
 - Final segment gets button extraction via `ButtonTracker`
 
 ### Typing indicator

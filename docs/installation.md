@@ -252,10 +252,10 @@ Security basics:
 
 ### Bot not responding
 
-1. check `telegram_token` + `allowed_user_ids`
+1. check transport credentials (`telegram_token` / `matrix` block) + allowlists
 2. run `ductor status`
 3. inspect `~/.ductor/logs/agent.log`
-4. run `/diagnose` in Telegram
+4. run `/diagnose` in chat
 
 ### CLI installed but not authenticated
 
