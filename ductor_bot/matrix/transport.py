@@ -194,9 +194,9 @@ class MatrixTransport:
 
     async def _broadcast(self, text: str) -> None:
         """Send to all allowed rooms (falls back to last active room)."""
-        rooms = list(self._bot.config.matrix.allowed_rooms)
-        if not rooms and self._bot._last_active_room:
-            rooms = [self._bot._last_active_room]
+        from ductor_bot.matrix.bot import resolve_broadcast_rooms
+
+        rooms = resolve_broadcast_rooms(self._bot.config, self._bot._last_active_room)
         if not rooms:
             logger.warning("_broadcast: no rooms available, message lost: %s", text[:80])
             return

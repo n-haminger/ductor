@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -16,15 +15,13 @@ from ductor_bot.files.prompt import MediaInfo
 from ductor_bot.files.prompt import build_media_prompt as _build_media_prompt_generic
 from ductor_bot.files.storage import prepare_destination as _prepare_destination
 from ductor_bot.files.storage import sanitize_filename as _sanitize_filename
-from ductor_bot.files.tags import guess_mime
+from ductor_bot.files.storage import update_index
 
 if TYPE_CHECKING:
     from aiogram import Bot
     from aiogram.types import Message
 
 logger = logging.getLogger(__name__)
-
-_INDEX_SKIP = frozenset({"_index.yaml", "CLAUDE.md", "AGENTS.md"})
 
 
 # ---------------------------------------------------------------------------
@@ -236,50 +233,6 @@ def _extract_sticker(msg: Message) -> _MediaTuple | None:
     if s.is_video:
         return "sticker", s, f"sticker_{uid}.webm", "video/webm"
     return "sticker", s, f"sticker_{uid}.webp", "image/webp"
-
-
-# ---------------------------------------------------------------------------
-# Index
-# ---------------------------------------------------------------------------
-
-
-def update_index(base_dir: Path) -> None:
-    """Rebuild ``_index.yaml`` by scanning all date subdirectories."""
-    tree: dict[str, list[dict[str, object]]] = {}
-    total = 0
-
-    for entry in sorted(base_dir.iterdir()):
-        if not entry.is_dir() or len(entry.name) != 10 or entry.name[4] != "-":
-            continue
-        files: list[dict[str, object]] = []
-        for f in sorted(entry.iterdir()):
-            if not f.is_file() or f.name in _INDEX_SKIP:
-                continue
-            stat = f.stat()
-            mime = guess_mime(f)
-            files.append(
-                {
-                    "name": f.name,
-                    "type": mime,
-                    "size": stat.st_size,
-                    "received": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
-                }
-            )
-            total += 1
-        if files:
-            tree[entry.name] = files
-
-    index = {
-        "last_updated": datetime.now(tz=UTC).isoformat(),
-        "total_files": total,
-        "tree": tree,
-    }
-    index_path = base_dir / "_index.yaml"
-    index_path.write_text(
-        yaml.safe_dump(index, default_flow_style=False, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
-    logger.debug("Index updated: %d files across %d days", total, len(tree))
 
 
 # ---------------------------------------------------------------------------

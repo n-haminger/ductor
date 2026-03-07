@@ -72,13 +72,27 @@ def _is_configured() -> bool:
         return False
 
     transport = data.get("transport", "telegram")
-    if transport == "matrix":
-        mx = data.get("matrix", {})
-        return bool(mx.get("homeserver")) and bool(mx.get("user_id"))
+    checker = _IS_CONFIGURED_CHECKS.get(transport, _is_configured_telegram)
+    return checker(data)
 
+
+def _is_configured_telegram(data: dict[str, object]) -> bool:
     token = data.get("telegram_token", "")
     users = data.get("allowed_user_ids", [])
     return bool(token) and not str(token).startswith("YOUR_") and bool(users)
+
+
+def _is_configured_matrix(data: dict[str, object]) -> bool:
+    mx = data.get("matrix", {})
+    if not isinstance(mx, dict):
+        return False
+    return bool(mx.get("homeserver")) and bool(mx.get("user_id"))
+
+
+_IS_CONFIGURED_CHECKS: dict[str, Callable[[dict[str, object]], bool]] = {
+    "telegram": _is_configured_telegram,
+    "matrix": _is_configured_matrix,
+}
 
 
 def load_config() -> AgentConfig:
@@ -152,10 +166,9 @@ async def run_bot(config: AgentConfig) -> int:
     """
     paths = resolve_paths(ductor_home=config.ductor_home)
 
-    if config.transport == "matrix":
-        _validate_matrix_config(config)
-    else:
-        _validate_telegram_config(config)
+    validator = _TRANSPORT_VALIDATORS.get(config.transport)
+    if validator:
+        validator(config)
 
     from ductor_bot.infra.pidlock import acquire_lock, release_lock
     from ductor_bot.multiagent.supervisor import AgentSupervisor
@@ -227,6 +240,12 @@ def _validate_matrix_config(config: AgentConfig) -> None:
             f"[bold yellow]At least one allowed_room or allowed_user is required.{hint}[/bold yellow]"
         )
         sys.exit(1)
+
+
+_TRANSPORT_VALIDATORS: dict[str, Callable[[AgentConfig], None]] = {
+    "telegram": _validate_telegram_config,
+    "matrix": _validate_matrix_config,
+}
 
 
 # ---------------------------------------------------------------------------

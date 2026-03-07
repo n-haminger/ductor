@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from ductor_bot.files.prompt import MediaInfo
 from ductor_bot.files.prompt import build_media_prompt as _build_media_prompt_generic
 from ductor_bot.files.storage import prepare_destination as _prepare_destination
 from ductor_bot.files.storage import sanitize_filename as _sanitize_filename
+from ductor_bot.files.storage import update_index as _update_index
 
 if TYPE_CHECKING:
     from nio import AsyncClient
@@ -29,21 +31,32 @@ async def resolve_matrix_media(
     event: object,
     matrix_files_dir: Path,
     workspace: Path,
+    *,
+    error_callback: Callable[[str], Awaitable[None]] | None = None,
 ) -> str | None:
     """Download media from a Matrix event, return agent prompt.
 
     Returns ``None`` if the download fails or the event has no media URL.
+    *error_callback* is called with an error message on failure so the
+    user gets feedback (analogous to Telegram's ``message.answer``).
     """
     await asyncio.to_thread(matrix_files_dir.mkdir, parents=True, exist_ok=True)
 
     try:
         info = await download_matrix_media(client, event, matrix_files_dir)
-    except (OSError, Exception):
+    except Exception:
         logger.exception("Failed to download Matrix media")
+        if error_callback:
+            await error_callback("Could not download that file.")
         return None
 
     if info is None:
         return None
+
+    try:
+        await asyncio.to_thread(_update_index, matrix_files_dir)
+    except Exception:
+        logger.warning("Index update failed", exc_info=True)
 
     return build_media_prompt(info, workspace)
 

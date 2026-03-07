@@ -30,7 +30,7 @@ from ductor_bot.session.key import SessionKey
 from ductor_bot.text.response_format import SEP, fmt
 
 if TYPE_CHECKING:
-    from nio import AsyncClient
+    from nio import AsyncClient, MatrixRoom, RoomMessageMedia, RoomMessageText
 
     from ductor_bot.infra.updater import UpdateObserver
     from ductor_bot.multiagent.bus import AsyncInterAgentResult
@@ -39,6 +39,14 @@ if TYPE_CHECKING:
     from ductor_bot.workspace.paths import DuctorPaths
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_broadcast_rooms(config: AgentConfig, last_active_room: str | None) -> list[str]:
+    """Return rooms for broadcast: allowed_rooms, or last active room as fallback."""
+    rooms = list(config.matrix.allowed_rooms)
+    if not rooms and last_active_room:
+        rooms = [last_active_room]
+    return rooms
 
 
 class MatrixNotificationService:
@@ -57,11 +65,7 @@ class MatrixNotificationService:
             await self.notify_all(text)
 
     async def notify_all(self, text: str) -> None:
-        rooms = self._bot.config.matrix.allowed_rooms
-        # Fallback: if no allowed_rooms configured, use last active room
-        if not rooms and self._bot._last_active_room:
-            rooms = [self._bot._last_active_room]
-        for room_id in rooms:
+        for room_id in resolve_broadcast_rooms(self._bot.config, self._bot._last_active_room):
             event_id = await matrix_send_rich(self._bot.client, room_id, text)
             self._bot._track_sent_event(event_id)
 
@@ -197,7 +201,7 @@ class MatrixBot:
         self._exit_code = 0
         self._sync_task = asyncio.current_task()
         try:
-            await self._client.sync_forever(timeout=30000, full_state=True)
+            await self._client.sync_forever(timeout=30000, full_state=False)
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -225,9 +229,8 @@ class MatrixBot:
 
     # --- Message handling ---
 
-    async def _on_message(self, room: object, event: object) -> None:
+    async def _on_message(self, room: MatrixRoom | object, event: RoomMessageText | object) -> None:
         """Handle incoming room messages."""
-        # Import here to avoid import errors when nio not installed
         from nio import MatrixRoom, RoomMessageText
 
         if not isinstance(room, MatrixRoom) or not isinstance(event, RoomMessageText):
@@ -270,14 +273,9 @@ class MatrixBot:
             return
 
         key = SessionKey(chat_id=chat_id, topic_id=None)
+        await self._dispatch_message(key, text, room_id, event)
 
-        # Dispatch
-        if self._config.streaming.enabled:
-            await self._run_streaming(key, text, room_id, event)
-        else:
-            await self._run_non_streaming(key, text, room_id, event)
-
-    async def _on_media(self, room: object, event: object) -> None:
+    async def _on_media(self, room: MatrixRoom | object, event: RoomMessageMedia | object) -> None:
         """Handle incoming media messages (images, audio, video, files)."""
         from nio import MatrixRoom, RoomMessageMedia
 
@@ -309,19 +307,20 @@ class MatrixBot:
         from ductor_bot.matrix.media import resolve_matrix_media
 
         paths = self._orch.paths
+
+        async def _on_error(msg: str) -> None:
+            await self._send_rich(room_id, msg)
+
         text = await resolve_matrix_media(
             self._client, event, paths.matrix_files_dir, paths.workspace,
+            error_callback=_on_error,
         )
 
         if not text:
             return
 
         key = SessionKey(chat_id=chat_id, topic_id=None)
-
-        if self._config.streaming.enabled:
-            await self._run_streaming(key, text, room_id, event)
-        else:
-            await self._run_non_streaming(key, text, room_id, event)
+        await self._dispatch_message(key, text, room_id, event)
 
     # Commands routed to the orchestrator's CommandRegistry
     _ORCHESTRATOR_COMMANDS = frozenset({
@@ -334,8 +333,6 @@ class MatrixBot:
         self, text: str, room_id: str, chat_id: int, event: object
     ) -> None:
         """Handle commands in Matrix. Supports both !cmd and /cmd prefixes."""
-        from ductor_bot.infra.restart import write_restart_marker, EXIT_RESTART
-
         # Normalize: strip prefix, extract command name
         cmd = text.split()[0].lower().lstrip("/!")
         # Ensure text has / prefix for orchestrator compatibility
@@ -343,130 +340,141 @@ class MatrixBot:
             text = "/" + text[1:]
         key = SessionKey(chat_id=chat_id, topic_id=None)
 
-        # --- Transport-level commands ---
+        handler = self._COMMAND_DISPATCH.get(cmd)
+        if handler is not None:
+            await handler(self, text=text, room_id=room_id, key=key, event=event)
+        elif cmd in self._ORCHESTRATOR_COMMANDS:
+            await self._cmd_orchestrator(text=text, room_id=room_id, key=key, event=event)
+        else:
+            # Unknown command → treat as regular message
+            await self._dispatch_message(key, text, room_id, event)
 
-        if cmd == "stop":
-            orch = self._orchestrator
-            if orch:
-                killed = await orch.abort(chat_id)
-                msg = f"Stopped {killed} process(es)." if killed else "No active processes."
-                await self._send_rich(room_id, msg)
-            return
+    # -- Individual command handlers ----------------------------------------
 
-        if cmd == "stop_all":
-            orch = self._orchestrator
-            killed = 0
-            if orch:
-                killed = await orch.abort(chat_id)
-            if self._abort_all_callback:
-                killed += await self._abort_all_callback()
+    async def _cmd_stop(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        orch = self._orchestrator
+        if orch:
+            killed = await orch.abort(key.chat_id)
             msg = f"Stopped {killed} process(es)." if killed else "No active processes."
             await self._send_rich(room_id, msg)
-            return
 
-        if cmd == "restart":
-            home = Path(self._config.ductor_home).expanduser()
-            write_restart_marker(marker_path=home / "restart-requested")
-            await self._send_rich(
-                room_id,
-                fmt("**Restarting**", SEP, "Bot is shutting down and will be back shortly."),
-            )
-            self._exit_code = EXIT_RESTART
-            if self._sync_task and not self._sync_task.done():
-                self._sync_task.cancel()
-            return
+    async def _cmd_stop_all(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        orch = self._orchestrator
+        killed = 0
+        if orch:
+            killed = await orch.abort(key.chat_id)
+        if self._abort_all_callback:
+            killed += await self._abort_all_callback()
+        msg = f"Stopped {killed} process(es)." if killed else "No active processes."
+        await self._send_rich(room_id, msg)
 
-        if cmd == "new":
-            orch = self._orchestrator
-            if orch:
-                result = await orch.handle_message(key, "/new")
-                if result and result.text:
-                    await self._send_rich(room_id, result.text)
-            return
+    async def _cmd_restart(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        from ductor_bot.infra.restart import EXIT_RESTART, write_restart_marker
 
-        if cmd in ("help", "start"):
-            await self._send_rich(room_id, self._build_help_text())
-            return
+        home = Path(self._config.ductor_home).expanduser()
+        write_restart_marker(marker_path=home / "restart-requested")
+        await self._send_rich(
+            room_id,
+            fmt("**Restarting**", SEP, "Bot is shutting down and will be back shortly."),
+        )
+        self._exit_code = EXIT_RESTART
+        if self._sync_task and not self._sync_task.done():
+            self._sync_task.cancel()
 
-        if cmd == "info":
-            version = get_current_version()
-            text_out = fmt(
-                "**ductor.dev**",
-                f"Version: `{version}`",
-                SEP,
-                "AI coding agents (Claude, Codex, Gemini) on Matrix.\n"
-                "Named sessions, persistent memory, cron jobs, webhooks, live streaming.",
-            )
-            await self._send_rich(room_id, text_out)
-            return
-
-        if cmd == "agent_commands":
-            lines = [
-                "The multi-agent system lets you run additional bots as "
-                "sub-agents — each with its own workspace and user list. "
-                "All agents share a single process and can communicate "
-                "via the inter-agent bus.",
-                "",
-                "**Commands**",
-                "`!agents` — list all agents and their status",
-                "`!agent_start <name>` — start a sub-agent",
-                "`!agent_stop <name>` — stop a sub-agent",
-                "`!agent_restart <name>` — restart a sub-agent",
-                "",
-                "**Setup**",
-                "Ask your agent to create a new sub-agent or edit "
-                "`agents.json` in your ductor home directory.",
-            ]
-            await self._send_rich(
-                room_id,
-                fmt("**Multi-Agent System**", SEP, "\n".join(lines)),
-            )
-            return
-
-        if cmd == "showfiles":
-            await self._send_rich(
-                room_id,
-                "File browser is not yet supported in Matrix. "
-                "Use `!status` to see workspace info.",
-            )
-            return
-
-        if cmd == "session":
-            parts = text.split(None, 1)
-            if len(parts) < 2 or not parts[1].strip():
-                await self._send_rich(
-                    room_id,
-                    fmt(
-                        "**Background Sessions**", SEP,
-                        "`!session <prompt>` — start a background session\n"
-                        "`!sessions` — view and manage all sessions\n"
-                        "`!stop` — cancel running session",
-                    ),
-                )
-                return
-            # Session with prompt — route to orchestrator as conversation
-            if self._config.streaming.enabled:
-                await self._run_streaming(key, text, room_id, event)
-            else:
-                await self._run_non_streaming(key, text, room_id, event)
-            return
-
-        # --- Orchestrator commands ---
-
-        if cmd in self._ORCHESTRATOR_COMMANDS:
-            orch = self._orchestrator
-            if not orch:
-                return
-            result = await orch.handle_message(key, text)
+    async def _cmd_new(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        orch = self._orchestrator
+        if orch:
+            result = await orch.handle_message(key, "/new")
             if result and result.text:
-                await self._send_selector_response(room_id, result.text, result.buttons)
-            return
+                await self._send_rich(room_id, result.text)
 
-        # --- Unknown command → treat as regular message ---
+    async def _cmd_help(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        await self._send_rich(room_id, self._build_help_text())
+
+    async def _cmd_info(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        version = get_current_version()
+        text_out = fmt(
+            "**ductor.dev**",
+            f"Version: `{version}`",
+            SEP,
+            "AI coding agents (Claude, Codex, Gemini) on Matrix.\n"
+            "Named sessions, persistent memory, cron jobs, webhooks, live streaming.",
+        )
+        await self._send_rich(room_id, text_out)
+
+    async def _cmd_agent_commands(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        lines = [
+            "The multi-agent system lets you run additional bots as "
+            "sub-agents — each with its own workspace and user list. "
+            "All agents share a single process and can communicate "
+            "via the inter-agent bus.",
+            "",
+            "**Commands**",
+            "`!agents` — list all agents and their status",
+            "`!agent_start <name>` — start a sub-agent",
+            "`!agent_stop <name>` — stop a sub-agent",
+            "`!agent_restart <name>` — restart a sub-agent",
+            "",
+            "**Setup**",
+            "Ask your agent to create a new sub-agent or edit "
+            "`agents.json` in your ductor home directory.",
+        ]
+        await self._send_rich(
+            room_id,
+            fmt("**Multi-Agent System**", SEP, "\n".join(lines)),
+        )
+
+    async def _cmd_showfiles(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        await self._send_rich(
+            room_id,
+            "File browser is not yet supported in Matrix. "
+            "Use `!status` to see workspace info.",
+        )
+
+    async def _cmd_session(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        parts = text.split(None, 1)
+        if len(parts) < 2 or not parts[1].strip():
+            await self._send_rich(
+                room_id,
+                fmt(
+                    "**Background Sessions**", SEP,
+                    "`!session <prompt>` — start a background session\n"
+                    "`!sessions` — view and manage all sessions\n"
+                    "`!stop` — cancel running session",
+                ),
+            )
+            return
+        # Session with prompt — route to orchestrator as conversation
+        await self._dispatch_message(key, text, room_id, event)
+
+    async def _cmd_orchestrator(self, *, text: str, room_id: str, key: SessionKey, event: object) -> None:
+        orch = self._orchestrator
+        if not orch:
+            return
+        result = await orch.handle_message(key, text)
+        if result and result.text:
+            await self._send_selector_response(room_id, result.text, result.buttons)
+
+    async def _dispatch_message(self, key: SessionKey, text: str, room_id: str, event: object) -> None:
+        """Route a message through streaming or non-streaming pipeline."""
         if self._config.streaming.enabled:
             await self._run_streaming(key, text, room_id, event)
         else:
             await self._run_non_streaming(key, text, room_id, event)
+
+    # Dispatch table: command name → handler method
+    _COMMAND_DISPATCH: dict[str, Callable[..., Awaitable[None]]] = {
+        "stop": _cmd_stop,
+        "stop_all": _cmd_stop_all,
+        "restart": _cmd_restart,
+        "new": _cmd_new,
+        "help": _cmd_help,
+        "start": _cmd_help,
+        "info": _cmd_info,
+        "agent_commands": _cmd_agent_commands,
+        "showfiles": _cmd_showfiles,
+        "session": _cmd_session,
+    }
 
     def _build_help_text(self) -> str:
         """Build the help text showing all available commands."""
@@ -930,9 +938,7 @@ class MatrixBot:
 
     async def broadcast(self, text: str) -> None:
         """Send a message to all allowed rooms (falls back to last active room)."""
-        rooms = list(self._config.matrix.allowed_rooms)
-        if not rooms and self._last_active_room:
-            rooms = [self._last_active_room]
+        rooms = resolve_broadcast_rooms(self._config, self._last_active_room)
         if not rooms:
             logger.warning("broadcast: no rooms available, message lost: %s", text[:80])
             return

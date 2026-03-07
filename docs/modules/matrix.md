@@ -15,7 +15,6 @@ Alternative to the Telegram transport — selected via `config.transport = "matr
 - `matrix/formatting.py`: Markdown → Matrix HTML conversion
 - `matrix/typing.py`: typing indicator context manager with periodic keep-alive (5s interval)
 - `matrix/media.py`: incoming media handler; downloads files from homeserver, builds agent prompts via `files/prompt.py`
-- `matrix/streaming.py`: `MatrixStreamEditor` for `m.replace`-based streaming (unused; kept for reference)
 - `matrix/startup.py`: Matrix-specific startup (orchestrator, observers, restart sentinel)
 
 ## Incoming media

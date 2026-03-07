@@ -32,13 +32,25 @@ def _config_changed(new: AgentConfig, old: AgentConfig) -> bool:
     """Detect meaningful config changes that require agent restart."""
     if new.transport != old.transport:
         return True
-    if new.transport == "telegram":
-        return new.telegram_token != old.telegram_token
-    # Matrix: check homeserver + user_id (credentials may rotate)
-    return (
-        new.matrix.homeserver != old.matrix.homeserver
-        or new.matrix.user_id != old.matrix.user_id
-    )
+    return _TRANSPORT_IDENTITY_CHANGED.get(new.transport, _default_identity_check)(new, old)
+
+
+def _telegram_identity_check(new: AgentConfig, old: AgentConfig) -> bool:
+    return new.telegram_token != old.telegram_token
+
+
+def _matrix_identity_check(new: AgentConfig, old: AgentConfig) -> bool:
+    return new.matrix.homeserver != old.matrix.homeserver or new.matrix.user_id != old.matrix.user_id
+
+
+def _default_identity_check(new: AgentConfig, old: AgentConfig) -> bool:
+    return False
+
+
+_TRANSPORT_IDENTITY_CHANGED: dict[str, object] = {
+    "telegram": _telegram_identity_check,
+    "matrix": _matrix_identity_check,
+}
 
 
 class AgentSupervisor:

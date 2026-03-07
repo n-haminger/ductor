@@ -48,15 +48,9 @@ class AgentStack:
         paths = resolve_paths(ductor_home=config.ductor_home)
         await asyncio.to_thread(init_workspace, paths)
 
-        bot: BotProtocol
-        if config.transport == "matrix":
-            from ductor_bot.matrix.bot import MatrixBot
+        from ductor_bot.transport_registry import create_bot
 
-            bot = MatrixBot(config, agent_name=name)
-        else:
-            from ductor_bot.bot.app import TelegramBot
-
-            bot = TelegramBot(config, agent_name=name)
+        bot = create_bot(config, agent_name=name)
 
         logger.info(
             "AgentStack created: name=%s home=%s main=%s transport=%s",
