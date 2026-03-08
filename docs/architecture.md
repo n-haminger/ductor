@@ -252,3 +252,4 @@ Rule sync:
 - all stacks share one event loop, inter-agent bus, and optional shared task hub
 - async inter-agent results are injected via bus envelopes
 - provider switch during `ia-<sender>` conversations auto-resets that named session and surfaces a provider-switch notice
+- optional Linux user isolation (`linux_user: true`): CLI subprocesses run as `ductor-<name>` via `sudo -u`, providing file-level access separation between agents

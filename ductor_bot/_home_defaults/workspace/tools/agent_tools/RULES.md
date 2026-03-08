@@ -131,6 +131,25 @@ Send any message to begin."
 To update an existing agent's notification, edit
 `~/.ductor/agents/<name>/workspace/JOIN_NOTIFICATION.md` directly.
 
+### Linux User Isolation (`--linux-user`)
+
+Add `--linux-user` to run the agent's CLI subprocesses as a dedicated Linux
+user (`ductor-<name>`), providing file-level isolation between agents.
+
+```bash
+python3 tools/agent_tools/create_agent.py \
+  --name "codex" \
+  --linux-user \
+  --transport matrix \
+  --homeserver "https://matrix.example.com" \
+  --user-id "@codex:example.com" \
+  --provider claude --model opus
+```
+
+Requires prior setup: the provisioning script (`scripts/manage-agent-user.sh`)
+must be root-owned, and a sudoers entry must allow the service user to call it.
+See `docs/config.md` → "Linux user isolation" for details.
+
 ## Matrix Bot Account Setup
 
 A Matrix agent needs a dedicated Matrix account. There are several ways

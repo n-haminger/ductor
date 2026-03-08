@@ -100,6 +100,8 @@ class CLIConfig:
     # Multi-agent identification:
     agent_name: str = "main"
     interagent_port: int = 8799
+    # Linux user isolation:
+    linux_user: str = ""
 
 
 _CONTAINER_DUCTOR_MOUNT = "/ductor"
@@ -193,6 +195,102 @@ def docker_wrap(
             ],
             None,
         )
+    return cmd, str(Path(config.working_dir).resolve())
+
+
+# ---------------------------------------------------------------------------
+# sudo wrapping (Linux user isolation)
+# ---------------------------------------------------------------------------
+
+# Environment variables preserved through sudo for CLI subprocesses.
+_SUDO_PRESERVE_VARS = (
+    "DUCTOR_HOME",
+    "DUCTOR_AGENT_NAME",
+    "DUCTOR_AGENT_ROLE",
+    "DUCTOR_INTERAGENT_PORT",
+    "DUCTOR_CHAT_ID",
+    "DUCTOR_TOPIC_ID",
+    "DUCTOR_SHARED_MEMORY_PATH",
+    "PATH",
+    "HOME",
+    "NODE_PATH",
+    "NVM_DIR",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "PPLX_API_KEY",
+    "DEEPSEEK_API_KEY",
+)
+
+
+def sudo_wrap(
+    cmd: list[str],
+    config: CLIConfig,
+    *,
+    extra_env: dict[str, str] | None = None,
+) -> tuple[list[str], str | None]:
+    """Wrap a CLI command for execution as a different Linux user via sudo.
+
+    Mirrors ``docker_wrap()``: when ``config.linux_user`` is set, the command
+    is prefixed with ``sudo -nu <user> --preserve-env=... --``.
+
+    Returns ``(wrapped_cmd, resolved_cwd)``.
+    """
+    if not config.linux_user:
+        return cmd, str(Path(config.working_dir).resolve())
+
+    logger.debug("sudo_wrap user=%s", config.linux_user)
+
+    preserve_keys = list(_SUDO_PRESERVE_VARS)
+    if extra_env:
+        preserve_keys.extend(extra_env.keys())
+    # Load user secrets so their keys are also preserved
+    working_dir = Path(config.working_dir)
+    ductor_home = working_dir.parent if working_dir.name == "workspace" else working_dir
+    main_home = ductor_home
+    if main_home.parent.name == "agents":
+        main_home = main_home.parent.parent
+
+    from ductor_bot.infra.env_secrets import load_env_secrets
+
+    for key in load_env_secrets(main_home / ".env"):
+        if key not in preserve_keys:
+            preserve_keys.append(key)
+
+    preserve_csv = ",".join(preserve_keys)
+    resolved_cwd = str(Path(config.working_dir).resolve())
+
+    wrapped = [
+        "sudo",
+        "-nu",
+        config.linux_user,
+        f"--preserve-env={preserve_csv}",
+        "--",
+        *cmd,
+    ]
+    return wrapped, resolved_cwd
+
+
+def wrap_command(
+    cmd: list[str],
+    config: CLIConfig,
+    *,
+    extra_env: dict[str, str] | None = None,
+    interactive: bool = False,
+) -> tuple[list[str], str | None]:
+    """Dispatch to ``docker_wrap`` or ``sudo_wrap`` based on config.
+
+    Docker and Linux user isolation are mutually exclusive.
+    Docker takes precedence if both are configured.
+    """
+    if config.docker_container:
+        if config.linux_user:
+            logger.warning(
+                "Both docker_container and linux_user set; docker takes precedence"
+            )
+        return docker_wrap(cmd, config, extra_env=extra_env, interactive=interactive)
+    if config.linux_user:
+        return sudo_wrap(cmd, config, extra_env=extra_env)
     return cmd, str(Path(config.working_dir).resolve())
 
 

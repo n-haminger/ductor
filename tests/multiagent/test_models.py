@@ -189,3 +189,32 @@ class TestMergeSubAgentConfig:
 
         assert result.api.enabled is True
         assert result.api.port == 8742
+
+    def test_linux_user_derived_from_name(self) -> None:
+        """linux_user=True in SubAgentConfig becomes 'ductor-<name>' in AgentConfig."""
+        main = self._main_config()
+        sub = SubAgentConfig(
+            name="codex",
+            telegram_token="sub-token",
+            linux_user=True,
+        )
+        result = merge_sub_agent_config(main, sub, Path("/agents/codex"))
+        assert result.linux_user == "ductor-codex"
+
+    def test_linux_user_not_set_by_default(self) -> None:
+        """linux_user is empty by default."""
+        main = self._main_config()
+        sub = SubAgentConfig(name="sub1", telegram_token="sub-token")
+        result = merge_sub_agent_config(main, sub, Path("/agents/sub1"))
+        assert result.linux_user == ""
+
+    def test_linux_user_false_not_set(self) -> None:
+        """linux_user=False keeps the field empty."""
+        main = self._main_config()
+        sub = SubAgentConfig(
+            name="sub1",
+            telegram_token="sub-token",
+            linux_user=False,
+        )
+        result = merge_sub_agent_config(main, sub, Path("/agents/sub1"))
+        assert result.linux_user == ""

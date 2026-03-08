@@ -144,6 +144,7 @@ class Orchestrator:
                 gemini_cli_parameters=tuple(config.cli_parameters.gemini),
                 agent_name=agent_name,
                 interagent_port=interagent_port,
+                linux_user=config.linux_user,
             ),
             models=self._providers.models,
             available_providers=frozenset(),
@@ -646,6 +647,7 @@ class Orchestrator:
                     claude_cli_parameters=tuple(config.cli_parameters.claude),
                     codex_cli_parameters=tuple(config.cli_parameters.codex),
                     gemini_cli_parameters=tuple(config.cli_parameters.gemini),
+                    linux_user=self._cli_service._config.linux_user,
                 )
             )
 

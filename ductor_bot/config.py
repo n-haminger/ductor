@@ -269,6 +269,7 @@ class AgentConfig(BaseModel):
     allowed_user_ids: list[int] = Field(default_factory=list)
     allowed_group_ids: list[int] = Field(default_factory=list)
     matrix: MatrixConfig = Field(default_factory=MatrixConfig)
+    linux_user: str = ""  # Linux user for CLI subprocess isolation (empty = disabled)
 
     @field_validator("gemini_api_key", mode="before")
     @classmethod

@@ -473,6 +473,7 @@ Managed via:
 | `api` | `ApiConfig` | no | disabled | Disabled by default for sub-agents |
 | `cli_parameters` | `CLIParametersConfig` | no | inherited | |
 | `user_timezone` | `str` | no | inherited | |
+| `linux_user` | `bool` | no | `false` | Run CLI as dedicated Linux user (`ductor-<name>`) |
 
 "inherited" means the value comes from the main agent's `config.json` when omitted.
 
@@ -538,3 +539,40 @@ Notes:
 - other field changes currently do not auto-restart running agents
 
 For non-token field updates on a running agent, use `/agent_restart <name>` (or restart the bot) to apply them immediately.
+
+### Linux user isolation
+
+When `"linux_user": true` is set in a sub-agent's `agents.json` entry, CLI subprocesses (claude/codex/gemini) run as a dedicated Linux user `ductor-<name>` via `sudo -u`. This provides file-level access isolation between agents.
+
+**How it works:**
+
+1. On agent startup, `AgentSupervisor` calls the provisioning script (`scripts/manage-agent-user.sh`) via sudo to create the Linux user.
+2. The user is a system account (`--system --shell /usr/sbin/nologin`) in the `ductor` group.
+3. Claude Code credentials are symlinked from the main user's `~/.claude/`.
+4. The agent's workspace is chowned to the agent user.
+5. CLI commands are wrapped with `sudo -nu ductor-<name> --preserve-env=... --`.
+
+**Setup prerequisites:**
+
+1. The provisioning script must be root-owned: `sudo chown root:root /opt/ductor/scripts/manage-agent-user.sh`
+2. A sudoers entry is needed (replace `agent` with your service user):
+
+```
+# /etc/sudoers.d/ductor-agents
+agent ALL=(root) NOPASSWD: /opt/ductor/scripts/manage-agent-user.sh
+```
+
+The provisioning script automatically writes per-agent sudoers entries for CLI execution when creating users.
+
+**Example agents.json:**
+
+```json
+{
+  "name": "codex",
+  "transport": "matrix",
+  "linux_user": true,
+  "matrix": { "..." : "..." }
+}
+```
+
+Docker and `linux_user` are mutually exclusive. Docker takes precedence if both are set.

@@ -64,6 +64,7 @@ class SubAgentConfig(BaseModel):
     api: ApiConfig | None = None
     cli_parameters: CLIParametersConfig | None = None
     user_timezone: str | None = None
+    linux_user: bool | None = None  # Run CLI as dedicated Linux user (ductor-<name>)
 
 
 def merge_sub_agent_config(
@@ -82,10 +83,12 @@ def merge_sub_agent_config(
     base = main.model_dump()
 
     # agents.json explicit overrides (non-None fields win)
-    overrides = sub.model_dump(exclude_none=True, exclude={"name"})
+    overrides = sub.model_dump(exclude_none=True, exclude={"name", "linux_user"})
     base.update(overrides)
 
     base["ductor_home"] = str(agent_home)
+    if sub.linux_user:
+        base["linux_user"] = f"ductor-{sub.name}"
     base["transport"] = sub.transport
     base["telegram_token"] = sub.telegram_token
     base["allowed_user_ids"] = sub.allowed_user_ids or []

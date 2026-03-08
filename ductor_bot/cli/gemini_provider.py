@@ -18,6 +18,7 @@ from ductor_bot.cli.base import (
     CLIConfig,
     _feed_stdin_and_close,
     docker_wrap,
+    wrap_command,
 )
 from ductor_bot.cli.gemini_events import extract_result_text, extract_text, parse_gemini_stream_line
 from ductor_bot.cli.gemini_utils import (
@@ -387,7 +388,7 @@ class GeminiCLI(BaseCLI):
             return exec_cmd, use_cwd, None
 
         env = self._prepare_env(system_prompt_path)
-        exec_cmd, use_cwd = docker_wrap(cmd, self._config)
+        exec_cmd, use_cwd = wrap_command(cmd, self._config)
         return exec_cmd, use_cwd, env
 
     def _track_process(

@@ -47,6 +47,15 @@ Each agent runs in `_supervised_run(...)` with health tracking.
 - changed `telegram_token`: restart sub-agent
 - other config field changes in `agents.json` currently do not trigger auto-restart
 
+## Linux user provisioning
+
+When a sub-agent has `linux_user: true` in `agents.json`:
+
+1. `_ensure_agent_user()` runs `sudo scripts/manage-agent-user.sh create <name>` before stack creation
+2. `_fix_agent_perms()` re-chowns the workspace after `init_workspace()` (which creates files as the ductor user)
+
+The provisioning script creates system users (`ductor-<name>`), symlinks Claude credentials, and writes per-agent sudoers entries.
+
 ## Orchestrator hook injection
 
 During bot startup, supervisor injects hooks into each agent dispatcher.

@@ -12,7 +12,7 @@ from ductor_bot.cli.base import (
     _IS_WINDOWS,
     BaseCLI,
     CLIConfig,
-    docker_wrap,
+    wrap_command,
 )
 from ductor_bot.cli.codex_events import (
     CodexThinkingFilter,
@@ -160,7 +160,7 @@ class CodexCLI(BaseCLI):
         if continue_session:
             logger.debug("continue_session is not supported by Codex CLI, ignoring")
         cmd = self._build_command(prompt, resume_session, json_output=True)
-        exec_cmd, use_cwd = docker_wrap(cmd, self._config)
+        exec_cmd, use_cwd = wrap_command(cmd, self._config)
         _log_cmd(exec_cmd)
         return await run_oneshot_subprocess(
             config=self._config,
@@ -179,7 +179,7 @@ class CodexCLI(BaseCLI):
     ) -> AsyncGenerator[StreamEvent, None]:
         """Send a prompt and yield stream events as they arrive."""
         cmd = self._build_command(prompt, resume_session, json_output=True)
-        exec_cmd, use_cwd = docker_wrap(cmd, self._config)
+        exec_cmd, use_cwd = wrap_command(cmd, self._config)
         _log_cmd(exec_cmd, streaming=True)
 
         state = _StreamState()

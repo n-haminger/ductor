@@ -90,6 +90,7 @@ Isolated per sub-agent:
 - transport credentials and auth (Telegram token or Matrix account)
 - workspace and files under `~/.ductor/agents/<name>/`
 - `sessions.json`, `named_sessions.json`, cron/webhook state
+- Linux user (optional, via `linux_user: true` in `agents.json`)
 
 Shared across process:
 
@@ -98,6 +99,15 @@ Shared across process:
 - optional shared `TaskHub`
 - central log file (`~/.ductor/logs/agent.log`)
 - shared knowledge source (`~/.ductor/SHAREDMEMORY.md`)
+
+## Linux user isolation
+
+When `"linux_user": true` is set in `agents.json`, CLI subprocesses run as
+`ductor-<name>` via `sudo -u`. The supervisor provisions the user automatically
+on first start. Docker and `linux_user` are mutually exclusive (Docker wins).
+
+Key files: `scripts/manage-agent-user.sh` (provisioning), `cli/base.py`
+(`sudo_wrap`, `wrap_command`). See `docs/config.md` for setup.
 
 ## Inter-agent communication
 

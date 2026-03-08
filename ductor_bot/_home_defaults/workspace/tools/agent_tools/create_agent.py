@@ -177,6 +177,12 @@ def main() -> None:
         default=None,
         help="Short agent description for the join notification (purpose, key commands)",
     )
+    parser.add_argument(
+        "--linux-user",
+        action="store_true",
+        default=False,
+        help="Run CLI subprocesses as a dedicated Linux user (ductor-<name>) for isolation",
+    )
     args = parser.parse_args()
 
     # --- Detect transport ---
@@ -339,6 +345,8 @@ def main() -> None:
         entry["provider"] = provider
     if resolved_model:
         entry["model"] = resolved_model
+    if args.linux_user:
+        entry["linux_user"] = True
 
     agents.append(entry)
 
@@ -375,6 +383,8 @@ def main() -> None:
         print(f"  Provider: {provider}")
     if resolved_model:
         print(f"  Model: {resolved_model}")
+    if args.linux_user:
+        print(f"  Linux user isolation: enabled (ductor-{name})")
     print(f"\nThe agent starts automatically within a few seconds.")
     if transport == "telegram":
         print(f"The user can open the sub-agent's bot chat in Telegram to talk to it directly.")

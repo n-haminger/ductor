@@ -13,7 +13,7 @@ from ductor_bot.cli.base import (
     _IS_WINDOWS,
     BaseCLI,
     CLIConfig,
-    docker_wrap,
+    wrap_command,
 )
 from ductor_bot.cli.executor import SubprocessSpec, run_oneshot_subprocess, run_streaming_subprocess
 from ductor_bot.cli.stream_events import (
@@ -99,7 +99,7 @@ class ClaudeCodeCLI(BaseCLI):
     ) -> CLIResponse:
         """Send a prompt and return the final result."""
         cmd = self._build_command(prompt, resume_session, continue_session)
-        exec_cmd, use_cwd = docker_wrap(cmd, self._config)
+        exec_cmd, use_cwd = wrap_command(cmd, self._config)
         _log_cmd(exec_cmd)
         return await run_oneshot_subprocess(
             config=self._config,
@@ -135,7 +135,7 @@ class ClaudeCodeCLI(BaseCLI):
     ) -> AsyncGenerator[StreamEvent, None]:
         """Send a prompt and yield stream events as they arrive."""
         cmd = self._build_command_streaming(prompt, resume_session, continue_session)
-        exec_cmd, use_cwd = docker_wrap(cmd, self._config)
+        exec_cmd, use_cwd = wrap_command(cmd, self._config)
         _log_cmd(exec_cmd, streaming=True)
 
         async for event in run_streaming_subprocess(

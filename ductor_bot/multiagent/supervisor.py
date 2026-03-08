@@ -429,11 +429,19 @@ class AgentSupervisor:
         agent_home = self._main_paths.ductor_home / "agents" / name
         config = merge_sub_agent_config(self._main_config, sub_cfg, agent_home)
 
+        # Provision dedicated Linux user if isolation is enabled.
+        if config.linux_user:
+            await self._ensure_agent_user(name)
+
         try:
             stack = await AgentStack.create(name, config)
         except Exception:
             logger.exception("Failed to create sub-agent '%s'", name)
             return
+
+        # Fix workspace ownership after init (files created as the ductor user).
+        if config.linux_user:
+            await self._fix_agent_perms(name)
 
         # Workspace init creates config.json from config.example (main defaults).
         # Overwrite model/provider/effort so the on-disk config matches agents.json.
@@ -488,6 +496,48 @@ class AgentSupervisor:
             health.mark_stopped()
 
         logger.info("Sub-agent '%s' stopped", name)
+
+    # ------------------------------------------------------------------
+    # Linux user provisioning
+    # ------------------------------------------------------------------
+
+    _PROVISIONING_SCRIPT = "/opt/ductor/scripts/manage-agent-user.sh"
+
+    async def _ensure_agent_user(self, agent_name: str) -> None:
+        """Create the Linux user for an isolated agent (idempotent)."""
+        import getpass
+
+        ductor_user = getpass.getuser()
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", self._PROVISIONING_SCRIPT, "create", agent_name, ductor_user,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error(
+                "Failed to provision user ductor-%s: %s",
+                agent_name,
+                stderr.decode(errors="replace").strip(),
+            )
+        else:
+            logger.info(
+                "Agent user ductor-%s: %s",
+                agent_name,
+                stdout.decode(errors="replace").strip(),
+            )
+
+    async def _fix_agent_perms(self, agent_name: str) -> None:
+        """Re-apply workspace ownership after init creates files as ductor user."""
+        import getpass
+
+        ductor_user = getpass.getuser()
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", self._PROVISIONING_SCRIPT, "fix-perms", agent_name, ductor_user,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
 
     async def start_agent_by_name(self, name: str) -> str:
         """Start a sub-agent by name from the registry. Returns status message."""
