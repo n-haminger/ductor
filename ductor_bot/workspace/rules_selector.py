@@ -175,21 +175,21 @@ class RulesSelector:
                 # Deploy CLAUDE.md if Claude is authenticated
                 if self._claude_authenticated:
                     claude_dst = dst_dir / "CLAUDE.md"
-                    shutil.copy2(template, claude_dst)
+                    shutil.copyfile(template, claude_dst)
                     deployed_count += 1
                     logger.debug("Deployed: %s -> CLAUDE.md", template.name)
 
                 # Deploy AGENTS.md if Codex is authenticated
                 if self._codex_authenticated:
                     agents_dst = dst_dir / "AGENTS.md"
-                    shutil.copy2(template, agents_dst)
+                    shutil.copyfile(template, agents_dst)
                     deployed_count += 1
                     logger.debug("Deployed: %s -> AGENTS.md", template.name)
 
                 # Deploy GEMINI.md if Gemini is authenticated
                 if self._gemini_authenticated:
                     gemini_dst = dst_dir / "GEMINI.md"
-                    shutil.copy2(template, gemini_dst)
+                    shutil.copyfile(template, gemini_dst)
                     deployed_count += 1
                     logger.debug("Deployed: %s -> GEMINI.md", template.name)
 

@@ -439,10 +439,6 @@ class AgentSupervisor:
             logger.exception("Failed to create sub-agent '%s'", name)
             return
 
-        # Fix workspace ownership after init (files created as the ductor user).
-        if config.linux_user:
-            await self._fix_agent_perms(name)
-
         # Workspace init creates config.json from config.example (main defaults).
         # Overwrite model/provider/effort so the on-disk config matches agents.json.
         config_path = agent_home / "config" / "config.json"
@@ -453,6 +449,14 @@ class AgentSupervisor:
                 model=config.model,
                 reasoning_effort=config.reasoning_effort,
             )
+
+        # Grant the isolated agent user ACL-based access to the workspace.
+        # The ductor service user retains ownership so the supervisor can
+        # always manage configs; the agent user gets rwX via ACL.
+        # This runs AFTER the config update so that the ACL mask is correct
+        # on files written by atomic_json_save (which creates with mode 0600).
+        if config.linux_user:
+            await self._fix_agent_perms(name)
 
         self._stacks[name] = stack
         self._health[name] = AgentHealth(name=name)
@@ -528,7 +532,7 @@ class AgentSupervisor:
             )
 
     async def _fix_agent_perms(self, agent_name: str) -> None:
-        """Re-apply workspace ownership after init creates files as ductor user."""
+        """Ensure the ductor user owns the workspace and the agent user has ACL access."""
         import getpass
 
         ductor_user = getpass.getuser()

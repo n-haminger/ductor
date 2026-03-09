@@ -92,10 +92,14 @@ def _is_zone2_py_file(entry: Path, src: Path, root_src: Path) -> bool:
 
 
 def _copy_with_symlink_check(entry: Path, target: Path) -> None:
-    """Copy file to target, removing symlink if present."""
+    """Copy file to target, removing symlink if present.
+
+    Uses copyfile (content-only) to avoid chmod/utime failures when the
+    target is owned by a different Linux user (linux_user isolation).
+    """
     if target.is_symlink():
         target.unlink()
-    shutil.copy2(entry, target)
+    shutil.copyfile(entry, target)
 
 
 def _handle_zone2_file(entry: Path, target: Path, dst: Path) -> None:
@@ -118,7 +122,7 @@ def _handle_regular_file(entry: Path, target: Path, src: Path, root_src: Path) -
         logger.debug("Zone 2 copy (framework tool): %s", target)
     elif not target.exists():
         # Zone 3: seed only (user-owned, never overwritten)
-        shutil.copy2(entry, target)
+        shutil.copyfile(entry, target)
         logger.debug("Zone 3 seed: %s", target)
     else:
         logger.debug("Zone 3 skip: %s (exists)", target)
@@ -192,7 +196,7 @@ def _sync_group(directory: Path) -> None:
         if name == newest_name:
             continue
         if path.exists() and path.stat().st_mtime < newest_mtime:
-            shutil.copy2(newest_path, path)
+            shutil.copyfile(newest_path, path)
 
 
 # ---------------------------------------------------------------------------

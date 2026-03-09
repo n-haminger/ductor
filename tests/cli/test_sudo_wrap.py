@@ -20,12 +20,12 @@ class TestSudoWrap:
         cfg = CLIConfig(linux_user="ductor-codex", working_dir="/workspace")
         result_cmd, cwd = sudo_wrap(cmd, cfg)
         assert result_cmd[0] == "sudo"
-        assert "-nu" in result_cmd
+        assert "-Hnu" in result_cmd
         assert "ductor-codex" in result_cmd
         assert "--" in result_cmd
-        # Original command preserved after --
+        # Original command preserved after -- (binary may be resolved to global path)
         sep = result_cmd.index("--")
-        assert result_cmd[sep + 1 :] == cmd
+        assert result_cmd[sep + 2 :] == cmd[1:]
         assert cwd == "/workspace"
 
     def test_preserves_ductor_env_vars(self) -> None:
@@ -51,8 +51,17 @@ class TestSudoWrap:
         cmd = ["claude"]
         cfg = CLIConfig(linux_user="ductor-test", working_dir="/workspace")
         result_cmd, _ = sudo_wrap(cmd, cfg)
-        # -nu means non-interactive + user
-        assert "-nu" in result_cmd
+        # -Hnu means set HOME + non-interactive + user
+        assert "-Hnu" in result_cmd
+
+    def test_home_not_preserved(self) -> None:
+        """HOME must not be in --preserve-env so sudo -H sets the target user's HOME."""
+        cmd = ["claude"]
+        cfg = CLIConfig(linux_user="ductor-test", working_dir="/workspace")
+        result_cmd, _ = sudo_wrap(cmd, cfg)
+        preserve = [a for a in result_cmd if a.startswith("--preserve-env=")]
+        preserved_vars = preserve[0].split("=", 1)[1].split(",")
+        assert "HOME" not in preserved_vars
 
 
 class TestWrapCommand:

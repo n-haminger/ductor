@@ -241,9 +241,11 @@ def sudo_wrap(
 
     logger.debug("sudo_wrap user=%s", config.linux_user)
 
-    preserve_keys = list(_SUDO_PRESERVE_VARS)
+    # HOME must NOT be preserved — sudo -nu sets it to the target user's
+    # home directory, which is where Claude looks for ~/.claude/ credentials.
+    preserve_keys = [k for k in _SUDO_PRESERVE_VARS if k != "HOME"]
     if extra_env:
-        preserve_keys.extend(extra_env.keys())
+        preserve_keys.extend(k for k in extra_env.keys() if k != "HOME")
     # Load user secrets so their keys are also preserved
     working_dir = Path(config.working_dir)
     ductor_home = working_dir.parent if working_dir.name == "workspace" else working_dir
@@ -260,13 +262,23 @@ def sudo_wrap(
     preserve_csv = ",".join(preserve_keys)
     resolved_cwd = str(Path(config.working_dir).resolve())
 
+    # Resolve the CLI binary to its global path if available.
+    # The sudoers entry references the global path (/usr/local/bin/claude),
+    # but the command may contain the per-user path (~/.local/bin/claude).
+    resolved_cmd = list(cmd)
+    if resolved_cmd:
+        binary = Path(resolved_cmd[0])
+        global_path = Path("/usr/local/bin") / binary.name
+        if global_path.exists() and binary != global_path:
+            resolved_cmd[0] = str(global_path)
+
     wrapped = [
         "sudo",
-        "-nu",
+        "-Hnu",
         config.linux_user,
         f"--preserve-env={preserve_csv}",
         "--",
-        *cmd,
+        *resolved_cmd,
     ]
     return wrapped, resolved_cwd
 

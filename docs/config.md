@@ -548,21 +548,25 @@ When `"linux_user": true` is set in a sub-agent's `agents.json` entry, CLI subpr
 
 1. On agent startup, `AgentSupervisor` calls the provisioning script (`scripts/manage-agent-user.sh`) via sudo to create the Linux user.
 2. The user is a system account (`--system --shell /usr/sbin/nologin`) in the `ductor` group.
-3. Claude Code credentials are symlinked from the main user's `~/.claude/`.
-4. The agent's workspace is chowned to the agent user.
-5. CLI commands are wrapped with `sudo -nu ductor-<name> --preserve-env=... --`.
+3. Claude Code credentials are symlinked from the main user's `~/.claude/` (directory traversal permissions are set automatically).
+4. The agent's workspace remains owned by the ductor service user; the agent user gets ACL-based `rwX` access via `fix-perms`.
+5. Claude CLI is made globally accessible via symlink (`/usr/local/bin/claude` → user-local install) with default ACLs on the versions directory so auto-updates work without restarts.
+6. CLI commands are wrapped with `sudo -Hnu ductor-<name> --preserve-env=... --` (HOME is set to the agent user's home so Claude finds its credentials).
 
 **Setup prerequisites:**
 
-1. The provisioning script must be root-owned: `sudo chown root:root /opt/ductor/scripts/manage-agent-user.sh`
-2. A sudoers entry is needed (replace `agent` with your service user):
+One-time root setup — this is the only manual step per installation:
 
 ```
 # /etc/sudoers.d/ductor-agents
-agent ALL=(root) NOPASSWD: /opt/ductor/scripts/manage-agent-user.sh
+<service_user> ALL=(root) NOPASSWD: /opt/ductor/scripts/manage-agent-user.sh
 ```
 
-The provisioning script automatically writes per-agent sudoers entries for CLI execution when creating users.
+The provisioning script handles everything else automatically:
+- Creates the Linux user and `ductor` group
+- Symlinks Claude credentials and sets directory traversal permissions
+- Installs Claude CLI globally (symlink + default ACLs for auto-updates)
+- Writes per-agent sudoers entries for CLI execution
 
 **Example agents.json:**
 
